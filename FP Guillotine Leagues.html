@@ -1,0 +1,956 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FP Guillotine Leagues</title>
+<style>
+  :root{
+    --bg:#0f1720;
+    --panel:#18232e;
+    --panel-2:#1f2d3a;
+    --text:#e6eef6;
+    --muted:#9bb3c9;
+    --accent:#2EC5A2;
+    --accent-2:#58a7ff;
+    --danger:#ff6b6b;
+    --chip:#263645;
+    --divider:#243243;
+    --shadow:0 6px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.02);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{
+    margin:0;height:100%;
+    background:radial-gradient(1400px 700px at 70% -10%, #1a2a38 0%, #0f1720 55%) fixed, var(--bg);
+    color:var(--text);
+    font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+  }
+  a{color:inherit}
+  .wrap{max-width:1200px;margin:28px auto;padding:0 16px}
+  header{
+    display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap
+  }
+  .logo{
+    width:28px;height:28px;border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),#74f0d5 70%);
+    box-shadow:var(--shadow)
+  }
+  h1{font-size:20px;margin:0;font-weight:750;letter-spacing:.2px}
+  .sub{
+    margin-left:auto;color:var(--muted);font-size:12px;opacity:.85;text-align:right
+  }
+
+  /* Primary tabs (Teams / Player Stats) */
+  .primary-tabs{
+    display:flex;
+    gap:18px;
+    border-bottom:1px solid var(--divider);
+    margin-bottom:14px;
+  }
+  .primary-tab{
+    position:relative;
+    padding:8px 0;
+    border:none;
+    background:none;
+    color:var(--muted);
+    font-weight:650;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .primary-tab::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;
+    bottom:-1px;
+    height:3px;
+    border-radius:999px;
+    background:transparent;
+  }
+  .primary-tab.active{
+    color:var(--text);
+  }
+  .primary-tab.active::after{
+    background:var(--accent);
+  }
+
+  /* League tabs (within Teams view on small screens) */
+  .tabs{
+    display:none;
+    margin-bottom:10px;
+    gap:8px;
+  }
+  .tab-btn{
+    flex:1;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--divider);
+    background:#1a2530;
+    color:var(--muted);
+    font-size:12px;
+    font-weight:650;
+    letter-spacing:.15px;
+    cursor:pointer;
+  }
+  .tab-btn.active{
+    background:var(--accent);
+    color:#041015;
+    border-color:#36e0b6;
+  }
+
+  .columns{display:grid;grid-template-columns:1fr;gap:16px}
+  .columns.single-column{
+    grid-template-columns:1fr;
+  }
+  .columns.single-column .col{
+    display:none;
+  }
+  .columns.single-column .col[data-active="true"]{
+    display:block;
+  }
+  @media (min-width:980px){
+    .tabs{display:none;}
+    .columns{grid-template-columns:1fr 1fr;}
+    .columns .col{display:block !important;}
+  }
+
+  .col{
+    border:1px solid var(--divider);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+    min-height:480px;
+  }
+
+  .col-header{
+    display:flex;align-items:center;gap:10px;
+    padding:14px 16px;border-bottom:1px solid var(--divider);
+    background:linear-gradient(180deg,rgba(46,197,162,.12),rgba(46,197,162,0) 130%);
+  }
+  .league-pill{
+    padding:6px 10px;border-radius:999px;background:var(--panel-2);
+    color:var(--text);font-weight:650;font-size:13px;letter-spacing:.1px;
+    display:inline-flex;align-items:center;gap:8px;border:1px solid var(--divider)
+  }
+  .small{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.2px}
+
+  .view{padding:10px 10px 16px}
+  .list{display:flex;flex-direction:column;gap:10px;padding:6px}
+
+  .row{
+    display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+    padding:10px 12px;border-radius:12px;background:var(--chip);border:1px solid var(--divider);
+    cursor:pointer;transition:transform .05s ease, background .2s ease, border-color .2s ease;
+  }
+  .row:hover{transform:translateY(-1px);background:#2a3a4b;border-color:#2f4052}
+
+  .avatar{
+    width:34px;height:34px;border-radius:10px;
+    background:linear-gradient(135deg,#89e5c2 0%, #2EC5A2 100%);
+    display:grid;place-items:center;color:#07221a;font-weight:800;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+    overflow:hidden;
+  }
+  .avatar-img{
+    width:100%;
+    height:100%;
+    border-radius:inherit;
+    object-fit:cover;
+    display:block;
+  }
+
+  .title{font-weight:700}
+  .meta{color:var(--muted);font-size:12px}
+  .fab{
+    font-variant-numeric:tabular-nums;font-weight:800;
+    padding:6px 10px;border-radius:10px;
+    background:#233243;border:1px solid #2e4358
+  }
+  .cap{font-size:11px;color:var(--muted)}
+
+  .team-head{
+    display:flex;align-items:center;gap:10px;margin:6px 6px 12px;
+  }
+  .btn{
+    appearance:none;border:1px solid #2b3c4f;background:#213141;
+    color:var(--text);padding:8px 10px;border-radius:10px;
+    font-weight:700;cursor:pointer
+  }
+  .btn:hover{background:#2a3a4b}
+  .team-name{font-weight:800;font-size:16px}
+
+  /* Team view layout - always vertical */
+  .grid{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    padding:4px 6px;
+  }
+
+  .card{
+    background:var(--chip);border:1px solid var(--divider);
+    border-radius:12px;padding:10px 12px
+  }
+  .card h3{margin:0 0 8px 0;font-size:13px;letter-spacing:.2px;color:#bfe4ff}
+  .player{
+    display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+    padding:8px;border-radius:10px;border:1px solid #2c3d50;background:#1d2a38;margin-bottom:8px
+  }
+
+  /* Player position avatar */
+  .p-avatar{
+    width:30px;height:30px;border-radius:10px;
+    display:grid;place-items:center;
+    font-weight:800;font-size:11px;
+    color:#041017;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+  }
+
+  .badge{
+    font-size:11px;padding:3px 7px;border-radius:999px;
+    background:#274055;border:1px solid #33506b;color:#d6eeff
+  }
+  .muted{color:var(--muted)}
+  .empty{color:var(--muted);font-style:italic}
+  .loading{padding:20px;text-align:center;color:var(--muted)}
+  .err{padding:10px;margin:8px;background:#3a2022;border:1px solid #5a2a30;color:#ffb4b4;border-radius:12px}
+  .footer{margin-top:18px;color:var(--muted);font-size:12px;text-align:center;opacity:.7}
+  .link-btn{
+    margin-top:6px;
+    background:none;border:none;padding:0;
+    color:var(--accent-2);cursor:pointer;font-size:12px;text-decoration:underline;
+  }
+
+  /* Stats tab layout */
+  .stats-content{padding:4px 0 0 0;}
+  .stats-section{margin-bottom:26px;}
+  .stats-section h2{
+    font-size:16px;
+    margin:0 0 10px 4px;
+    letter-spacing:.2px;
+  }
+  .stats-table-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:12px;
+  }
+  .stats-card{
+    background:var(--chip);
+    border:1px solid var(--divider);
+    border-radius:12px;
+    padding:10px 12px;
+  }
+  .stats-card-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  .stats-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  .stats-table th,
+  .stats-table td{
+    padding:4px 4px;
+  }
+  .stats-table thead th{
+    border-bottom:1px solid var(--divider);
+    font-weight:600;
+    color:#c7d8ea;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+  }
+  .stats-table tbody tr:nth-child(odd){
+    background:rgba(0,0,0,.06);
+  }
+  .stats-table tbody tr:hover{
+    background:rgba(255,255,255,.03);
+  }
+  .stats-empty{
+    text-align:center;
+    color:var(--muted);
+    font-style:italic;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true"></div>
+      <h1>FP Guillotine Leagues</h1>
+    </header>
+
+    <div class="primary-tabs">
+      <button class="primary-tab active" data-tab="teams" onclick="setPrimaryTab('teams')">Teams</button>
+      <button class="primary-tab" data-tab="stats" onclick="setPrimaryTab('stats')">Player Stats</button>
+    </div>
+
+    <div id="teams-view">
+      <div class="tabs" id="league-tabs"></div>
+
+      <div class="columns single-column" id="columns">
+        <!-- columns render here -->
+      </div>
+    </div>
+
+    <div id="stats-view" style="display:none">
+      <div class="view">
+        <div id="stats-content" class="stats-content">
+          <div class="loading">Player stats will appear here after we load the transactions.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Player directory is cached in your browser for about 10 days.<br/>
+      <button class="link-btn" onclick="clearPlayersCache()">Refresh player directory</button>
+    </div>
+  </div>
+
+<script>
+const LEAGUE_IDS = [
+  { id: '1262120211746656256', label: 'League A' },
+  { id: '1262120355430928384', label: 'League B' }
+];
+
+const PLAYERS_TTL_DAYS = 10;
+const PLAYERS_IDB_DB = 'chopped-idb';
+const PLAYERS_IDB_STORE = 'kv';
+const PLAYERS_IDB_KEY = 'players_nfl_v1';
+const MAX_WEEKS = 18;
+
+const POSITION_COLORS = {
+  QB: '#ff2a6d',
+  RB: '#00ceb8',
+  WR: '#58a7ff',
+  TE: '#ffae58'
+};
+
+const $ = (sel, el=document) => el.querySelector(sel);
+const el = (tag, attrs={}, ...kids) => {
+  const n = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==='class') n.className=v;
+    else if(k==='html') n.innerHTML=v;
+    else if(k.startsWith('on') && typeof v==='function') n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k,v);
+  });
+  kids.forEach(k=> n.append(k));
+  return n;
+};
+const fmtFab = (x) => `$${x.toLocaleString()}`;
+
+const cache = {
+  leagues: new Map(),
+  rosters: new Map(),
+  users: new Map(),
+  playersAll: null,
+  transactions: new Map()
+};
+
+let activeLeagueIndex = 0;
+let activePrimaryTab = 'teams';
+let statsLoaded = false;
+
+async function getJSON(url){
+  const res = await fetch(url, { headers: { 'Accept':'application/json' }});
+  if(!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return await res.json();
+}
+
+/* IndexedDB helpers for players blob */
+function openIdb(){
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open(PLAYERS_IDB_DB, 1);
+    open.onupgradeneeded = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains(PLAYERS_IDB_STORE)) {
+        db.createObjectStore(PLAYERS_IDB_STORE);
+      }
+    };
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => resolve(open.result);
+  });
+}
+
+async function idbGet(key){
+  try{
+    const db = await openIdb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(PLAYERS_IDB_STORE, 'readonly');
+      const store = tx.objectStore(PLAYERS_IDB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    });
+  }catch(e){
+    return null;
+  }
+}
+
+async function idbSet(key, value){
+  try{
+    const db = await openIdb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(PLAYERS_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(PLAYERS_IDB_STORE);
+      store.put(value, key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }catch(e){}
+}
+
+async function idbDelete(key){
+  try{
+    const db = await openIdb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(PLAYERS_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(PLAYERS_IDB_STORE);
+      store.delete(key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }catch(e){}
+}
+
+const api = {
+  league: (leagueId) => getJSON(`https://api.sleeper.app/v1/league/${leagueId}`),
+  rosters: (leagueId) => getJSON(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+  leagueUsers: (leagueId) => getJSON(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+  playersAllNFL: async () => {
+    if (cache.playersAll) return cache.playersAll;
+    const ttlMs = PLAYERS_TTL_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const stored = await idbGet(PLAYERS_IDB_KEY);
+    if (stored && stored.data && stored.savedAt && (now - stored.savedAt) < ttlMs) {
+      cache.playersAll = stored.data;
+      return cache.playersAll;
+    }
+    const data = await getJSON('https://api.sleeper.app/v1/players/nfl');
+    cache.playersAll = data;
+    idbSet(PLAYERS_IDB_KEY, { savedAt: now, data });
+    return data;
+  },
+  transactions: (leagueId, week) => getJSON(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`)
+};
+
+function mapUsersByOwnerId(users){
+  const m = new Map();
+  users.forEach(u => {
+    m.set(u.user_id, {
+      user_id: u.user_id,
+      username: u.username,
+      display_name: u.display_name,
+      team_name: u.metadata && (u.metadata.team_name || u.metadata.team_name_full) || null,
+      avatar: u.avatar || null
+    });
+  });
+  return m;
+}
+
+const columnsEl = document.getElementById('columns');
+const tabsEl = document.getElementById('league-tabs');
+
+function setupTabs(){
+  LEAGUE_IDS.forEach((cfg, index) => {
+    const btn = el('button', {
+      class: 'tab-btn' + (index === activeLeagueIndex ? ' active' : ''),
+      onclick: () => setActiveLeague(index)
+    }, cfg.label || `League ${index+1}`);
+    btn.dataset.index = index;
+    tabsEl.append(btn);
+  });
+}
+
+function setActiveLeague(index){
+  activeLeagueIndex = index;
+  const cols = columnsEl.querySelectorAll('.col');
+  cols.forEach(col => {
+    col.dataset.active = (Number(col.dataset.index) === index).toString();
+  });
+  tabsEl.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.index) === index);
+  });
+}
+
+function updateResponsiveLayout(){
+  if (window.innerWidth < 980){
+    columnsEl.classList.add('single-column');
+    tabsEl.style.display = 'flex';
+    setActiveLeague(activeLeagueIndex);
+  } else {
+    columnsEl.classList.remove('single-column');
+    tabsEl.style.display = 'none';
+  }
+}
+
+/* Primary tab switching */
+function setPrimaryTab(tab){
+  activePrimaryTab = tab;
+  const teamsView = document.getElementById('teams-view');
+  const statsView = document.getElementById('stats-view');
+  document.querySelectorAll('.primary-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  teamsView.style.display = tab === 'teams' ? '' : 'none';
+  statsView.style.display = tab === 'stats' ? '' : 'none';
+
+  if (tab === 'stats' && !statsLoaded){
+    loadStats();
+  }
+}
+
+async function init(){
+  setupTabs();
+
+  for(const [i, leagueCfg] of LEAGUE_IDS.entries()){
+    const col = renderColumnSkeleton(i);
+    columnsEl.append(col);
+
+    try{
+      const [league, rosters, users] = await Promise.all([
+        cache.leagues.get(leagueCfg.id) || api.league(leagueCfg.id),
+        cache.rosters.get(leagueCfg.id) || api.rosters(leagueCfg.id),
+        cache.users.get(leagueCfg.id)   || api.leagueUsers(leagueCfg.id)
+      ]);
+      cache.leagues.set(leagueCfg.id, league);
+      cache.rosters.set(leagueCfg.id, rosters);
+      cache.users.set(leagueCfg.id, users);
+
+      const tabBtn = tabsEl.querySelector(`.tab-btn[data-index="${i}"]`);
+      if (tabBtn && league.name) tabBtn.textContent = league.name;
+
+      mountLeagueView(col, leagueCfg.id, league, rosters, users);
+    }catch(err){
+      col.replaceChildren(
+        columnHeader('Error'),
+        el('div',{class:'view'},
+          el('div',{class:'err'}, `Failed to load league ${leagueCfg.id}. ${err.message}`)
+        )
+      );
+    }
+  }
+
+  updateResponsiveLayout();
+  window.addEventListener('resize', updateResponsiveLayout);
+}
+
+/* Teams tab rendering */
+function renderColumnSkeleton(index){
+  const c = el('div', {class:'col'});
+  c.dataset.index = index;
+  c.dataset.active = (index === activeLeagueIndex).toString();
+  c.append(
+    columnHeader('Loading'),
+    el('div',{class:'view'},
+      el('div',{class:'loading'}, 'Fetching league data...'))
+  );
+  return c;
+}
+
+function columnHeader(title, season){
+  const hdr = el('div', {class:'col-header'});
+  hdr.append(
+    el('div',{class:'league-pill'}, title),
+    season ? el('div',{class:'small'}, season) : el('span')
+  );
+  return hdr;
+}
+
+function mountLeagueView(container, leagueId, league, rosters, users){
+  container.replaceChildren(
+    columnHeader(league.name || 'League', `Season ${league.season}`),
+    el('div', {class:'view'}, buildTeamList(container, leagueId, league, rosters, users))
+  );
+}
+
+function buildTeamList(container, leagueId, league, rosters, users){
+  const waiverCap = Number(league.settings && league.settings.waiver_budget || 0);
+  const usersById = mapUsersByOwnerId(users);
+  const active = rosters.filter(r => !(r.settings && Object.prototype.hasOwnProperty.call(r.settings,'eliminated')));
+
+  active.sort((a,b)=>{
+    const aRem = waiverCap - Number(a.settings && a.settings.waiver_budget_used || 0);
+    const bRem = waiverCap - Number(b.settings && b.settings.waiver_budget_used || 0);
+    return bRem - aRem;
+  });
+
+  const list = el('div',{class:'list'});
+
+  active.forEach(r=>{
+    const u = usersById.get(r.owner_id) || {};
+    const teamName = u.team_name || u.display_name || 'Team';
+    const username = u.username ? `@${u.username}` : '';
+    const remaining = Math.max(0, waiverCap - Number(r.settings && r.settings.waiver_budget_used || 0));
+    const initials = (teamName || 'T').split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase();
+
+    let avatarNode;
+    if (u.avatar){
+      const src = `https://sleepercdn.com/avatars/thumbs/${u.avatar}`;
+      avatarNode = el('div',{class:'avatar'},
+        el('img',{class:'avatar-img', src, alt:teamName})
+      );
+    } else {
+      avatarNode = el('div',{class:'avatar','aria-hidden':'true'}, initials);
+    }
+
+    const row = el(
+      'div',
+      {
+        class:'row',
+        role:'button',
+        tabindex:'0',
+        onclick:()=> mountTeamView(container, leagueId, league, r, usersById),
+        onkeydown:(e)=>{ if(e.key==='Enter' || e.key===' ') row.click(); }
+      },
+      avatarNode,
+      el('div',{},
+        el('div',{class:'title'}, teamName),
+        el('div',{class:'meta'}, username)
+      ),
+      el('div',{},
+        el('div',{class:'fab'}, fmtFab(remaining)),
+        el('div',{class:'cap muted', style:'text-align:right'}, 'FAB left')
+      )
+    );
+    list.append(row);
+  });
+
+  if(active.length===0){
+    list.append(el('div',{class:'empty'}, 'No active teams.'));
+  }
+  return list;
+}
+
+async function mountTeamView(container, leagueId, league, roster, usersById){
+  const user = usersById.get(roster.owner_id) || {};
+  const teamName = user.team_name || user.display_name || 'Team';
+  const header = columnHeader(league.name || 'League', `Season ${league.season}`);
+
+  const view = el('div',{class:'view'});
+  const head = el('div',{class:'team-head'},
+    el('button',{
+      class:'btn',
+      onclick:()=> mountLeagueView(container, leagueId, league, cache.rosters.get(leagueId), cache.users.get(leagueId))
+    }, '← Back'),
+    el('div',{class:'team-name'}, teamName),
+    el('div',{class:'muted'}, user.username ? `@${user.username}` : '')
+  );
+  view.append(head, el('div',{class:'loading'}, 'Loading players...'));
+  container.replaceChildren(header, view);
+
+  try{
+    const playersAll = await api.playersAllNFL();
+    const startersIds = (roster.starters || []).filter(id => id && id !== "0");
+    const allIds = (roster.players || []).filter(Boolean);
+    const benchIds = allIds.filter(id => !startersIds.includes(id));
+
+    const starters = startersIds.map(id => playersAll[id]).filter(Boolean);
+    const bench    = benchIds.map(id => playersAll[id]).filter(Boolean);
+
+    const grid = el('div',{class:'grid'});
+    grid.append(
+      renderPlayerCard('Starters', starters),
+      renderPlayerCard('Bench', bench)
+    );
+
+    view.replaceChildren(head, grid);
+  }catch(err){
+    view.replaceChildren(
+      head,
+      el('div',{class:'err'}, 'Could not load players. The Sleeper player directory may be blocked or took too long. Try again or refresh the player directory.')
+    );
+  }
+}
+
+function renderPlayerCard(title, arr){
+  const card = el('div',{class:'card'});
+  card.append(el('h3',{}, title));
+
+  if(!arr || arr.length===0){
+    card.append(el('div',{class:'empty'}, 'No players to show.'));
+    return card;
+  }
+
+  arr.forEach(p=>{
+    const name = p && (p.full_name || (p.first_name && p.last_name && (p.first_name + ' ' + p.last_name)) || p.first_name) || 'Player';
+    const team = p && (p.team || (p.metadata && p.metadata.team)) || '';
+    const pos  = p && p.position || '';
+    const bye  = p && p.bye_week ? `Bye ${p.bye_week}` : '';
+    const status = p && p.status || 'Active';
+    const label = pos || '?';
+    const color = POSITION_COLORS[pos] || '#9bb3c9';
+
+    const row = el('div',{class:'player'},
+      el('div',{class:'p-avatar','aria-hidden':'true', style:`background:${color}`}, label),
+      el('div',{},
+        el('div',{}, document.createTextNode(name)),
+        el('div',{class:'muted'}, team ? `${team}${bye ? ' • ' + bye : ''}` : (bye || ''))
+      ),
+      el('div',{}, el('span',{class:'badge'}, status))
+    );
+    card.append(row);
+  });
+  return card;
+}
+
+/* Player Stats tab logic */
+
+async function fetchLeagueTransactions(leagueId){
+  if (cache.transactions.has(leagueId)) return cache.transactions.get(leagueId);
+  const all = [];
+  for (let wk = 1; wk <= MAX_WEEKS; wk++){
+    try{
+      const arr = await api.transactions(leagueId, wk);
+      if (Array.isArray(arr) && arr.length){
+        arr.forEach(tx => { tx._week = wk; all.push(tx); });
+      }
+      // we intentionally do not early-break in case there are later weeks with data
+    }catch(e){
+      // ignore per-week errors, keep what we have
+    }
+  }
+  cache.transactions.set(leagueId, all);
+  return all;
+}
+
+function computeLeagueStats(leagueId, transactions){
+  const chops = new Map(); // playerId -> count
+  const spent = new Map(); // playerId -> { total, count }
+  const winningBids = [];  // { playerId, bid, week, rosterId, leagueId }
+
+  transactions.forEach(tx => {
+    if (tx.status !== 'complete') return;
+
+    if (tx.type === 'chopped' && tx.drops){
+      Object.keys(tx.drops).forEach(pid => {
+        chops.set(pid, (chops.get(pid) || 0) + 1);
+      });
+    }
+
+    if (tx.type === 'waiver' && tx.adds && tx.settings){
+      const bid = Number(tx.settings.waiver_bid || 0);
+      const week = tx.leg || tx._week || null;
+      const rosterId = tx.roster_ids && tx.roster_ids.length ? Number(tx.roster_ids[0]) : null;
+
+      Object.keys(tx.adds).forEach(pid => {
+        winningBids.push({ playerId: pid, bid, week, rosterId, leagueId });
+
+        const rec = spent.get(pid) || { total:0, count:0 };
+        rec.total += bid;
+        rec.count += 1;
+        spent.set(pid, rec);
+      });
+    }
+  });
+
+  return { chops, spent, winningBids };
+}
+
+function getPlayerName(playersAll, playerId){
+  const p = playersAll && playersAll[playerId];
+  if (!p) return `Player ${playerId}`;
+  if (p.full_name) return p.full_name;
+  if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`;
+  return p.first_name || p.last_name || `Player ${playerId}`;
+}
+
+function getLeagueName(leagueId){
+  const league = cache.leagues.get(leagueId);
+  return league && league.name ? league.name : leagueId;
+}
+
+function getOwnerLabel(leagueId, rosterId){
+  if (rosterId == null) return 'Unknown';
+  const rosters = cache.rosters.get(leagueId) || [];
+  const roster = rosters.find(r => Number(r.roster_id) === Number(rosterId));
+  if (!roster) return 'Unknown';
+  const users = cache.users.get(leagueId) || [];
+  const user = users.find(u => u.user_id === roster.owner_id);
+  if (!user) return 'Unknown';
+  return user.display_name || user.username || 'Unknown';
+}
+
+function rowsFromChopsMap(map, playersAll){
+  const arr = Array.from(map.entries()).map(([playerId, count]) => ({
+    player: getPlayerName(playersAll, playerId),
+    times: count
+  }));
+  arr.sort((a,b) => b.times - a.times);
+  return arr.slice(0, 10);
+}
+
+function rowsFromSpentMap(map, playersAll){
+  const arr = Array.from(map.entries()).map(([playerId, rec]) => ({
+    player: getPlayerName(playersAll, playerId),
+    total: rec.total,
+    times: rec.count
+  }));
+  arr.sort((a,b) => b.total - a.total);
+  return arr.slice(0, 10).map(r => ({
+    player: r.player,
+    total: fmtFab(r.total),
+    times: r.times
+  }));
+}
+
+function rowsFromWinningBids(bids, playersAll){
+  const sorted = bids.slice().sort((a,b) => b.bid - a.bid).slice(0, 10);
+  return sorted.map(rec => ({
+    player: getPlayerName(playersAll, rec.playerId),
+    bid: fmtFab(rec.bid),
+    by: getOwnerLabel(rec.leagueId, rec.rosterId),
+    week: rec.week != null ? rec.week : '-'
+  }));
+}
+
+function createStatsSection(title, tables, columns){
+  const sec = el('section',{class:'stats-section'});
+  sec.append(el('h2',{}, title));
+  const grid = el('div',{class:'stats-table-grid'});
+  tables.forEach(t => {
+    const card = el('div',{class:'stats-card'});
+    card.append(
+      el('div',{class:'stats-card-title'}, t.title),
+      buildStatsTable(columns, t.rows)
+    );
+    grid.append(card);
+  });
+  sec.append(grid);
+  return sec;
+}
+
+function buildStatsTable(columns, rows){
+  const table = el('table',{class:'stats-table'});
+  const thead = el('thead',{},
+    el('tr',{}, ...columns.map(col =>
+      el('th',{style:`text-align:${col.align || 'left'}`}, col.label)
+    ))
+  );
+  table.append(thead);
+  const tbody = el('tbody',{});
+  if (!rows || rows.length === 0){
+    const td = el('td',{class:'stats-empty', colspan:String(columns.length)}, 'No data yet.');
+    tbody.append(el('tr',{}, td));
+  } else {
+    rows.forEach(row => {
+      const tr = el('tr',{});
+      columns.forEach(col => {
+        tr.append(
+          el('td',{style:`text-align:${col.align || 'left'}`}, row[col.key] != null ? row[col.key] : '')
+        );
+      });
+      tbody.append(tr);
+    });
+  }
+  table.append(tbody);
+  return table;
+}
+
+function buildMostChoppedSection(playersAll, statsByLeague, combined){
+  const league1Id = LEAGUE_IDS[0].id;
+  const league2Id = LEAGUE_IDS[1].id;
+  const tables = [
+    { title:'All Leagues', rows: rowsFromChopsMap(combined.chops, playersAll) },
+    { title:getLeagueName(league1Id), rows: rowsFromChopsMap(statsByLeague[league1Id].chops, playersAll) },
+    { title:getLeagueName(league2Id), rows: rowsFromChopsMap(statsByLeague[league2Id].chops, playersAll) }
+  ];
+  const columns = [
+    { key:'player', label:'Player', align:'left' },
+    { key:'times', label:'Times Chopped', align:'right' }
+  ];
+  return createStatsSection('Most Chopped', tables, columns);
+}
+
+function buildHighestSingleBidsSection(playersAll, statsByLeague, combined){
+  const league1Id = LEAGUE_IDS[0].id;
+  const league2Id = LEAGUE_IDS[1].id;
+  const tables = [
+    { title:'All Leagues', rows: rowsFromWinningBids(combined.winningBids, playersAll) },
+    { title:getLeagueName(league1Id), rows: rowsFromWinningBids(statsByLeague[league1Id].winningBids, playersAll) },
+    { title:getLeagueName(league2Id), rows: rowsFromWinningBids(statsByLeague[league2Id].winningBids, playersAll) }
+  ];
+  const columns = [
+    { key:'player', label:'Player', align:'left' },
+    { key:'bid', label:'Bid', align:'right' },
+    { key:'by', label:'By', align:'left' },
+    { key:'week', label:'Week', align:'right' }
+  ];
+  return createStatsSection('Highest Single Bids', tables, columns);
+}
+
+function buildMostSpentSection(playersAll, statsByLeague, combined){
+  const league1Id = LEAGUE_IDS[0].id;
+  const league2Id = LEAGUE_IDS[1].id;
+  const tables = [
+    { title:'All Leagues', rows: rowsFromSpentMap(combined.spent, playersAll) },
+    { title:getLeagueName(league1Id), rows: rowsFromSpentMap(statsByLeague[league1Id].spent, playersAll) },
+    { title:getLeagueName(league2Id), rows: rowsFromSpentMap(statsByLeague[league2Id].spent, playersAll) }
+  ];
+  const columns = [
+    { key:'player', label:'Player', align:'left' },
+    { key:'total', label:'Total Spent', align:'right' },
+    { key:'times', label:'Times Won', align:'right' }
+  ];
+  return createStatsSection('Most Spent Overall', tables, columns);
+}
+
+async function loadStats(){
+  statsLoaded = true;
+  const container = document.getElementById('stats-content');
+  container.replaceChildren(el('div',{class:'loading'}, 'Loading transactions and building stats...'));
+
+  try{
+    const playersAll = await api.playersAllNFL();
+    const statsByLeague = {};
+    const combined = {
+      chops: new Map(),
+      spent: new Map(),
+      winningBids: []
+    };
+
+    for (const cfg of LEAGUE_IDS){
+      const txs = await fetchLeagueTransactions(cfg.id);
+      const leagueStats = computeLeagueStats(cfg.id, txs);
+      statsByLeague[cfg.id] = leagueStats;
+
+      leagueStats.chops.forEach((count, playerId) => {
+        combined.chops.set(playerId, (combined.chops.get(playerId) || 0) + count);
+      });
+      leagueStats.spent.forEach((rec, playerId) => {
+        const cur = combined.spent.get(playerId) || { total:0, count:0 };
+        cur.total += rec.total;
+        cur.count += rec.count;
+        combined.spent.set(playerId, cur);
+      });
+      combined.winningBids.push(...leagueStats.winningBids);
+    }
+
+    const sections = [
+      buildMostChoppedSection(playersAll, statsByLeague, combined),
+      buildHighestSingleBidsSection(playersAll, statsByLeague, combined),
+      buildMostSpentSection(playersAll, statsByLeague, combined)
+    ];
+    container.replaceChildren(...sections);
+  }catch(err){
+    container.replaceChildren(el('div',{class:'err'}, 'Failed to load stats: ' + err.message));
+  }
+}
+
+/* Shared utilities */
+async function clearPlayersCache(){
+  cache.playersAll = null;
+  await idbDelete(PLAYERS_IDB_KEY);
+  alert('Player directory cache cleared. It will re-download the next time you open a team.');
+}
+
+init();
+</script>
+</body>
+</html>
