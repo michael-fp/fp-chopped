@@ -1,0 +1,47 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FP Guillotine Leagues</title>
+<link rel="stylesheet" href="css/main.css">
+
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true"></div>
+      <h1>FP Guillotine Leagues</h1>
+    </header>
+
+    <div class="primary-tabs">
+      <button class="primary-tab active" data-tab="teams" onclick="setPrimaryTab('teams')">Teams</button>
+      <button class="primary-tab" data-tab="stats" onclick="setPrimaryTab('stats')">Player Stats</button>
+    </div>
+
+    <div id="teams-view">
+      <div class="tabs" id="league-tabs"></div>
+
+      <div class="columns single-column" id="columns">
+        <!-- columns render here -->
+      </div>
+    </div>
+
+    <div id="stats-view" style="display:none">
+      <div class="view">
+        <div id="stats-content" class="stats-content">
+          <div class="loading">Player stats will appear here after we load the transactions.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Player directory is cached in your browser for about 10 days.<br/>
+      <button class="link-btn" onclick="clearPlayersCache()">Refresh player directory</button>
+    </div>
+  </div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
