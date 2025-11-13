@@ -17,6 +17,7 @@
 
     <div class="primary-tabs">
       <button class="primary-tab active" data-tab="teams" onclick="setPrimaryTab('teams')">Teams</button>
+      <button class="primary-tab" data-tab="fab-spending" onclick="setPrimaryTab('fab-spending')">FAB Spending</button>
       <button class="primary-tab" data-tab="stats" onclick="setPrimaryTab('stats')">Player Stats</button>
     </div>
 
@@ -25,6 +26,14 @@
 
       <div class="columns single-column" id="columns">
         <!-- columns render here -->
+      </div>
+    </div>
+
+    <div id="fab-spending-view" style="display:none">
+      <div class="view">
+        <div id="fab-spending-content" class="fab-spending-content">
+          <div class="loading">FAB spending chart will appear here.</div>
+        </div>
       </div>
     </div>
 

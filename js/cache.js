@@ -10,5 +10,6 @@ export const cache = {
 export const state = {
   activeLeagueIndex: 0,
   activePrimaryTab: 'teams',
-  statsLoaded: false
+  statsLoaded: false,
+  fabSpendingLoaded: false
 };

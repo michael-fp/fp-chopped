@@ -268,3 +268,86 @@
     color:var(--muted);
     font-style:italic;
   }
+
+  /* FAB Spending tab */
+  .fab-spending-content{
+    padding:14px;
+  }
+  .chart-controls{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+  }
+  .replay-btn{
+    padding:8px 16px;
+    font-size:14px;
+    font-weight:700;
+  }
+  .replay-btn:disabled{
+    opacity:0.6;
+    cursor:not-allowed;
+  }
+  .segmented-control{
+    display:flex;
+    gap:0;
+    border-radius:10px;
+    overflow:hidden;
+    border:1px solid var(--divider);
+  }
+  .segment-btn{
+    padding:8px 16px;
+    border:none;
+    border-right:1px solid var(--divider);
+    background:var(--panel-2);
+    color:var(--muted);
+    font-weight:650;
+    font-size:13px;
+    cursor:pointer;
+    transition:all 0.2s ease;
+  }
+  .segment-btn:last-child{
+    border-right:none;
+  }
+  .segment-btn:hover{
+    background:#2a3a4b;
+  }
+  .segment-btn.active{
+    background:var(--accent);
+    color:#041015;
+  }
+  .chart-container{
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    padding:10px;
+    background:var(--chip);
+    border:1px solid var(--divider);
+    border-radius:12px;
+    overflow-x:auto;
+  }
+  .fab-chart{
+    max-width:100%;
+    height:auto;
+  }
+  .chart-tooltip{
+    position:absolute;
+    display:none;
+    background:var(--panel);
+    border:1px solid var(--divider);
+    border-radius:8px;
+    padding:8px 12px;
+    pointer-events:none;
+    z-index:1000;
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+  }
+  .tooltip-team{
+    font-weight:700;
+    font-size:13px;
+    margin-bottom:2px;
+  }
+  .tooltip-fab{
+    font-size:12px;
+    color:var(--muted);
+  }
