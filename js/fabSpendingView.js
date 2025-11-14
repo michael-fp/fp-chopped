@@ -508,8 +508,15 @@ function renderChart(timelines, animationProgress = 1.0) {
     
     // Store the calculated endpoint (before jitter) and the visible points
     const lastPoint = visiblePoints[visiblePoints.length - 1];
-    const currentWeekWithProgress = lastPoint.week + lastPoint.weekProgress;
-    const baseEndpoint = getAvatarPosition(visiblePoints, xScale, yScale, currentWeekWithProgress);
+    const currentWeekWithProgress = lastPoint.week + (lastPoint.weekProgress || 0);
+    
+    // For the avatar position, use the actual last point coordinates directly
+    // This ensures the avatar is at the end of the line, even for eliminated teams
+    const baseEndpoint = {
+      x: xScale(currentWeekWithProgress),
+      y: yScale(lastPoint.fab)
+    };
+    
     lineEndpoints.set(index, { visiblePoints, baseEndpoint, fab: lastPoint.fab, isEliminatedAtCurrentTime });
   });
   
