@@ -441,7 +441,7 @@ function renderPlayerCard(title, arr, matchup) {
       ),
       el(
         'div',
-        { style: 'font-weight: bold; color: #333;' },
+        { style: 'font-weight: bold; color: var(--text);' },
         `${points.toFixed(2)}`
       )
     );
