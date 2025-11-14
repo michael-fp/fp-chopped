@@ -275,7 +275,7 @@ function buildTeamStatusSegmentedControl(onFilterChange) {
 }
 
 // Helper to create smooth Bezier curves through points
-function createSmoothPath(points, xScale, yScale, overrideEndX = null, overrideEndY = null) {
+function createSmoothPath(points, xScale, yScale) {
   if (points.length === 0) return '';
   if (points.length === 1) {
     const point = points[0];
@@ -317,80 +317,6 @@ function createSmoothPath(points, xScale, yScale, overrideEndX = null, overrideE
   }
   
   return path;
-}
-
-// Helper to get interpolated position on Bezier curve for avatar placement
-function getBezierPoint(p0, p1, cp1, cp2, t) {
-  // Cubic Bezier formula: B(t) = (1-t)³P0 + 3(1-t)²tCP1 + 3(1-t)t²CP2 + t³P1
-  const mt = 1 - t;
-  const mt2 = mt * mt;
-  const mt3 = mt2 * mt;
-  const t2 = t * t;
-  const t3 = t2 * t;
-  
-  return {
-    x: mt3 * p0.x + 3 * mt2 * t * cp1.x + 3 * mt * t2 * cp2.x + t3 * p1.x,
-    y: mt3 * p0.y + 3 * mt2 * t * cp1.y + 3 * mt * t2 * cp2.y + t3 * p1.y
-  };
-}
-
-// Get avatar position along the smooth curve (not just at endpoint)
-function getAvatarPosition(points, xScale, yScale, currentWeekWithProgress) {
-  if (points.length === 0) return null;
-  if (points.length === 1) {
-    return {
-      x: xScale(points[0].week + points[0].weekProgress),
-      y: yScale(points[0].fab)
-    };
-  }
-  
-  // Find which segment we're in
-  for (let i = 1; i < points.length; i++) {
-    const prevPoint = points[i - 1];
-    const point = points[i];
-    const prevWeek = prevPoint.week + prevPoint.weekProgress;
-    const currWeek = point.week + point.weekProgress;
-    
-    if (currentWeekWithProgress >= prevWeek && currentWeekWithProgress <= currWeek) {
-      // We're in this segment, interpolate along the Bezier curve
-      const prevX = xScale(prevWeek);
-      const prevY = yScale(prevPoint.fab);
-      const currX = xScale(currWeek);
-      const currY = yScale(point.fab);
-      
-      // Calculate control points (same logic as createSmoothPath)
-      const fabDrop = Math.abs(point.fab - prevPoint.fab);
-      const tension = Math.max(0.3, Math.min(0.6, 1 - (fabDrop / 200)));
-      
-      const cp1 = {
-        x: prevX + (currX - prevX) * tension,
-        y: prevY + (currY - prevY) * 0.1
-      };
-      const cp2 = {
-        x: prevX + (currX - prevX) * (1 - tension),
-        y: prevY + (currY - prevY) * 0.9
-      };
-      
-      // Calculate t (0 to 1) within this segment
-      const weekDiff = currWeek - prevWeek;
-      const segmentProgress = weekDiff > 0 ? (currentWeekWithProgress - prevWeek) / weekDiff : 0;
-      
-      return getBezierPoint(
-        { x: prevX, y: prevY },
-        { x: currX, y: currY },
-        cp1,
-        cp2,
-        segmentProgress
-      );
-    }
-  }
-  
-  // Default to last point
-  const lastPoint = points[points.length - 1];
-  return {
-    x: xScale(lastPoint.week + lastPoint.weekProgress),
-    y: yScale(lastPoint.fab)
-  };
 }
 
 function renderChart(timelines, animationProgress = 1.0) {
