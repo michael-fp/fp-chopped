@@ -1,5 +1,5 @@
 // js/teamsView.js
-import { LEAGUE_IDS, POSITION_COLORS, CURRENT_WEEK } from './constants.js';
+import { LEAGUE_IDS, POSITION_COLORS, MAX_WEEKS } from './constants.js';
 import { cache, state } from './cache.js';
 import { api } from './api.js';
 import { el, fmtFab } from './dom.js';
@@ -66,6 +66,21 @@ export function updateResponsiveLayout() {
 }
 
 export async function initLeagues() {
+  // Detect current week and scoring week once before loading leagues
+  if (!state.currentWeek || !state.scoringWeek) {
+    try {
+      // Use first league to detect weeks
+      const weeks = await api.detectWeeks(LEAGUE_IDS[0].id, MAX_WEEKS);
+      state.currentWeek = weeks.currentWeek;
+      state.scoringWeek = weeks.scoringWeek;
+      console.log(`Detected weeks - Current: ${state.currentWeek}, Scoring: ${state.scoringWeek}`);
+    } catch (e) {
+      console.error('Failed to detect weeks, defaulting to 1:', e);
+      state.currentWeek = 1;
+      state.scoringWeek = 1;
+    }
+  }
+
   for (const [i, leagueCfg] of LEAGUE_IDS.entries()) {
     const col = renderColumnSkeleton(i);
     columnsEl.append(col);
@@ -75,7 +90,7 @@ export async function initLeagues() {
         cache.leagues.get(leagueCfg.id) || api.league(leagueCfg.id),
         cache.rosters.get(leagueCfg.id) || api.rosters(leagueCfg.id),
         cache.users.get(leagueCfg.id) || api.leagueUsers(leagueCfg.id),
-        cache.matchups.get(leagueCfg.id) || api.matchups(leagueCfg.id, CURRENT_WEEK)
+        cache.matchups.get(leagueCfg.id) || api.matchups(leagueCfg.id, state.scoringWeek)
       ]);
 
       cache.leagues.set(leagueCfg.id, league);

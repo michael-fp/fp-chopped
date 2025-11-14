@@ -10,8 +10,8 @@
 // - Team avatars at line endpoints with jitter to prevent overlap
 // - Graying out of eliminated teams at their elimination week
 
-import { LEAGUE_IDS, MAX_WEEKS, CURRENT_WEEK } from './constants.js';
-import { cache } from './cache.js';
+import { LEAGUE_IDS, MAX_WEEKS } from './constants.js';
+import { cache, state } from './cache.js';
 import { api } from './api.js';
 import { el } from './dom.js';
 
@@ -571,9 +571,10 @@ function renderChart(timelines, animationProgress = 1.0) {
         }
       } else {
         // For non-eliminated teams, extend to current week
-        if (lastVisible.week < CURRENT_WEEK) {
+        const currentWeek = state.currentWeek || 1;
+        if (lastVisible.week < currentWeek) {
           visiblePoints.push({ 
-            week: CURRENT_WEEK, 
+            week: currentWeek, 
             weekProgress: 0,
             fab: lastVisible.fab,
             timestamp: lastVisible.timestamp
