@@ -415,9 +415,11 @@ function renderChart(timelines, animationProgress = 1.0) {
   const maxFab = staticMaxFab;
   const maxWeek = staticMaxWeek;
   
-  // X-axis scales from week 1 to maxWeek, but data starts at week 0
-  // Map week 0 -> left edge (week 1 label), week maxWeek -> right edge
-  const xScale = (weekWithProgress) => marginLeft + (weekWithProgress / maxWeek) * chartWidth;
+  // X-axis scaling: data goes from week 0 to maxWeek
+  // Add slight padding on the right so maxWeek doesn't hit the edge
+  // This prevents week 11 transactions from appearing to be in week 12
+  const chartMaxWeek = maxWeek + 0.5; // Add half a week of padding
+  const xScale = (weekWithProgress) => marginLeft + (weekWithProgress / chartMaxWeek) * chartWidth;
   const yScale = (fab) => marginTop + chartHeight - (fab / maxFab) * chartHeight;
   
   // Create SVG
