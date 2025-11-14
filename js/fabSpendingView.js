@@ -14,11 +14,16 @@ const CHART_COLORS = [
 ];
 
 let currentFilter = 'both';
+let currentTeamStatusFilter = 'all'; // 'all', 'remaining', or 'chopped'
 let isAnimating = false;
 let isPaused = false;
 let animationFrameId = null;
 let pausedProgress = 0;
+let currentAnimationProgress = 1.0;
 let hoveredTeamIndex = null;
+let baseTimelines = []; // all timelines across leagues for current load
+let staticMaxFab = 1000; // FAB always starts at 1000
+let staticMaxWeek = 0;
 
 async function fetchLeagueTransactions(leagueId) {
   if (cache.transactions.has(leagueId)) {
@@ -146,7 +151,7 @@ function computeFABTimeline(leagueId) {
   return Object.values(timelines);
 }
 
-function buildSegmentedControl(onFilterChange) {
+function buildLeagueSegmentedControl(onFilterChange) {
   const container = el('div', { class: 'segmented-control' });
   
   const options = [
@@ -160,6 +165,32 @@ function buildSegmentedControl(onFilterChange) {
       class: 'segment-btn' + (opt.value === currentFilter ? ' active' : ''),
       onclick: () => {
         currentFilter = opt.value;
+        container.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        onFilterChange(opt.value);
+      }
+    }, opt.label);
+    btn.dataset.value = opt.value;
+    container.append(btn);
+  });
+  
+  return container;
+}
+
+function buildTeamStatusSegmentedControl(onFilterChange) {
+  const container = el('div', { class: 'segmented-control' });
+  
+  const options = [
+    { value: 'all', label: 'All Teams' },
+    { value: 'remaining', label: 'Remaining' },
+    { value: 'chopped', label: 'Chopped' }
+  ];
+  
+  options.forEach(opt => {
+    const btn = el('button', {
+      class: 'segment-btn' + (opt.value === currentTeamStatusFilter ? ' active' : ''),
+      onclick: () => {
+        currentTeamStatusFilter = opt.value;
         container.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         onFilterChange(opt.value);
@@ -270,7 +301,8 @@ function getAvatarPosition(points, xScale, yScale, currentWeekWithProgress) {
       };
       
       // Calculate t (0 to 1) within this segment
-      const segmentProgress = (currentWeekWithProgress - prevWeek) / (currWeek - prevWeek);
+      const weekDiff = currWeek - prevWeek;
+      const segmentProgress = weekDiff > 0 ? (currentWeekWithProgress - prevWeek) / weekDiff : 0;
       
       return getBezierPoint(
         { x: prevX, y: prevY },
@@ -291,6 +323,15 @@ function getAvatarPosition(points, xScale, yScale, currentWeekWithProgress) {
 }
 
 function renderChart(timelines, animationProgress = 1.0) {
+  // Safety check for empty timelines
+  if (!timelines || timelines.length === 0) {
+    console.warn('No timelines to render');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', 900);
+    svg.setAttribute('height', 600);
+    return svg;
+  }
+  
   const width = 900;
   const height = 600;
   const marginTop = 40;
@@ -301,18 +342,9 @@ function renderChart(timelines, animationProgress = 1.0) {
   const chartWidth = width - marginLeft - marginRight;
   const chartHeight = height - marginTop - marginBottom;
   
-  // Find max FAB and max week
-  let maxFab = 0;
-  let maxWeek = 0;
-  timelines.forEach(t => {
-    t.points.forEach(p => {
-      if (p.fab > maxFab) maxFab = p.fab;
-      const weekPos = p.week + p.weekProgress;
-      if (weekPos > maxWeek) maxWeek = weekPos;
-    });
-  });
-  
-  if (maxWeek === 0) maxWeek = MAX_WEEKS;
+  // Use static max values calculated from baseTimelines (not filtered timelines)
+  const maxFab = staticMaxFab;
+  const maxWeek = staticMaxWeek;
   
   const xScale = (weekWithProgress) => marginLeft + (weekWithProgress / maxWeek) * chartWidth;
   const yScale = (fab) => marginTop + chartHeight - (fab / maxFab) * chartHeight;
@@ -449,7 +481,7 @@ function renderChart(timelines, animationProgress = 1.0) {
       }
     }
     
-    // Check if eliminated and past elimination week
+    // Check if eliminated and past elimination week (at full animation or final state)
     if (timeline.isEliminated && timeline.eliminatedWeek && animationProgress === 1.0) {
       visiblePoints = visiblePoints.filter(p => p.week <= timeline.eliminatedWeek);
       if (visiblePoints.length > 0) {
@@ -466,19 +498,25 @@ function renderChart(timelines, animationProgress = 1.0) {
       }
     }
     
+    // Calculate if team should be grayed out at current animation progress
+    const currentAnimationWeek = maxWeek * animationProgress;
+    const isEliminatedAtCurrentTime = timeline.isEliminated && 
+                                       timeline.eliminatedWeek && 
+                                       currentAnimationWeek >= timeline.eliminatedWeek;
+    
     if (visiblePoints.length === 0) return;
     
     // Store the calculated endpoint (before jitter) and the visible points
     const lastPoint = visiblePoints[visiblePoints.length - 1];
     const currentWeekWithProgress = lastPoint.week + lastPoint.weekProgress;
     const baseEndpoint = getAvatarPosition(visiblePoints, xScale, yScale, currentWeekWithProgress);
-    lineEndpoints.set(index, { visiblePoints, baseEndpoint, fab: lastPoint.fab });
+    lineEndpoints.set(index, { visiblePoints, baseEndpoint, fab: lastPoint.fab, isEliminatedAtCurrentTime });
   });
   
   // Calculate jitter offsets for overlapping avatars using the same visible points
   const avatarPositions = [];
   lineEndpoints.forEach((data, index) => {
-    const { visiblePoints, baseEndpoint, fab } = data;
+    const { visiblePoints, baseEndpoint, fab, isEliminatedAtCurrentTime } = data;
     const timeline = sortedTimelines.find(t => t.originalIndex === index);
     if (!timeline || !baseEndpoint) return;
     
@@ -488,13 +526,14 @@ function renderChart(timelines, animationProgress = 1.0) {
       x: baseEndpoint.x,
       y: baseEndpoint.y,
       fab,
-      visiblePoints
+      visiblePoints,
+      isEliminatedAtCurrentTime
     });
   });
   
   // Apply jitter to overlapping positions
   const JITTER_THRESHOLD = 5;
-  const JITTER_OFFSET = 3;
+  const JITTER_OFFSET = 5; // Increased by 2px
   
   avatarPositions.forEach((pos, i) => {
     let yOffset = 0;
@@ -520,7 +559,7 @@ function renderChart(timelines, animationProgress = 1.0) {
   linesGroup.classList.add('lines-group');
   
   // Now draw lines with corrected endpoints
-  avatarPositions.forEach(({ originalIndex, x, y, xOffset, yOffset }) => {
+  avatarPositions.forEach(({ originalIndex, x, y, xOffset, yOffset, isEliminatedAtCurrentTime }) => {
     const index = originalIndex;
     const lineData = lineEndpoints.get(index);
     if (!lineData) return;
@@ -529,7 +568,7 @@ function renderChart(timelines, animationProgress = 1.0) {
     const timeline = sortedTimelines.find(t => t.originalIndex === index);
     if (!timeline) return;
     
-    const color = CHART_COLORS[index % CHART_COLORS.length];
+    const color = isEliminatedAtCurrentTime ? '#999' : CHART_COLORS[index % CHART_COLORS.length];
     
     // Create path but replace last point with actual avatar position (with jitter)
     const adjustedPoints = [...visiblePoints];
@@ -559,6 +598,11 @@ function renderChart(timelines, animationProgress = 1.0) {
     path.dataset.isEliminated = timeline.isEliminated;
     path.style.cursor = 'pointer';
     
+    // Gray out eliminated teams
+    if (isEliminatedAtCurrentTime) {
+      path.setAttribute('opacity', hoveredTeamIndex === index ? '0.6' : '0.3');
+    }
+    
     // Apply opacity based on hover state
     if (hoveredTeamIndex !== null && hoveredTeamIndex !== index) {
       path.setAttribute('opacity', '0.4');
@@ -581,7 +625,7 @@ function renderChart(timelines, animationProgress = 1.0) {
   const avatarsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   avatarsGroup.classList.add('avatars-group');
   
-  avatarPositions.forEach(({ originalIndex, timeline, x, y, fab, xOffset, yOffset, visiblePoints }) => {
+  avatarPositions.forEach(({ originalIndex, timeline, x, y, fab, xOffset, yOffset, visiblePoints, isEliminatedAtCurrentTime }) => {
     const index = originalIndex;
     const color = CHART_COLORS[index % CHART_COLORS.length];
     
@@ -589,8 +633,7 @@ function renderChart(timelines, animationProgress = 1.0) {
     const endX = x + xOffset;
     const endY = y + yOffset;
     
-    const lastPoint = visiblePoints[visiblePoints.length - 1];
-    const isGrayedOut = timeline.isEliminated && timeline.eliminatedWeek && lastPoint.week >= timeline.eliminatedWeek;
+    const isGrayedOut = isEliminatedAtCurrentTime;
     
     // Avatar group (for hover and tooltip)
     const avatarGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -671,7 +714,7 @@ function renderChart(timelines, animationProgress = 1.0) {
   defs.appendChild(filter);
   svg.insertBefore(defs, svg.firstChild);
   
-  // Add hover event listeners (tooltip will be created when SVG is mounted)
+  // Add hover event listeners (tooltip will be managed at container level)
   svg.querySelectorAll('[data-team-index]').forEach(el => {
     el.addEventListener('mouseenter', (e) => {
       const teamIndex = Number(el.dataset.teamIndex);
@@ -681,58 +724,57 @@ function renderChart(timelines, animationProgress = 1.0) {
       const avatarGroup = el;
       avatarGroup.parentNode.appendChild(avatarGroup);
       
-      // Get or create tooltip
-      let tooltip = svg.parentNode?.querySelector('.chart-tooltip');
-      if (!tooltip && svg.parentNode) {
+      // Get or create tooltip in the chart container (survives SVG replacements)
+      const chartContainer = svg.parentNode;
+      if (!chartContainer) return;
+      
+      let tooltip = chartContainer.querySelector('.chart-tooltip');
+      if (!tooltip) {
         tooltip = document.createElement('div');
         tooltip.className = 'chart-tooltip';
-        svg.parentNode.appendChild(tooltip);
+        chartContainer.appendChild(tooltip);
       }
       
-      if (tooltip) {
-        // Show tooltip
-        const teamName = el.dataset.teamName;
-        const fab = el.dataset.fab;
-        const isEliminated = el.dataset.isEliminated === 'true';
-        
-        const statusText = isEliminated ? 'FAB at Elimination' : 'Current FAB';
-        tooltip.innerHTML = `
-          <div class="tooltip-team">${teamName}</div>
-          <div class="tooltip-fab">${statusText}: $${Number(fab).toLocaleString()}</div>
-        `;
-        tooltip.style.display = 'block';
-      }
+      // Show tooltip
+      const teamName = el.dataset.teamName;
+      const fab = el.dataset.fab;
+      const isEliminated = el.dataset.isEliminated === 'true';
       
-      // Re-render chart with hover effect (faded lines)
-      const newChart = renderChart(timelines, animationProgress);
-      if (svg.parentNode) {
-        svg.parentNode.replaceChild(newChart, svg);
-      }
+      const statusText = isEliminated ? 'FAB at Elimination' : 'Current FAB';
+      tooltip.innerHTML = `
+        <div class="tooltip-team">${teamName}</div>
+        <div class="tooltip-fab">${statusText}: $${Number(fab).toLocaleString()}</div>
+      `;
+      tooltip.style.display = 'block';
+      
+      // During replay, the next frame will reflect hover state automatically
     });
   });
   
   svg.addEventListener('mouseleave', () => {
     if (hoveredTeamIndex !== null) {
       hoveredTeamIndex = null;
-      const tooltip = svg.parentNode?.querySelector('.chart-tooltip');
-      if (tooltip) {
-        tooltip.style.display = 'none';
-      }
-      const newChart = renderChart(timelines, animationProgress);
-      if (svg.parentNode) {
-        svg.parentNode.replaceChild(newChart, svg);
+      const chartContainer = svg.parentNode;
+      if (chartContainer) {
+        const tooltip = chartContainer.querySelector('.chart-tooltip');
+        if (tooltip) {
+          tooltip.style.display = 'none';
+        }
       }
     }
   });
   
   // Update tooltip position on mouse move
   svg.addEventListener('mousemove', (e) => {
-    if (hoveredTeamIndex !== null && svg.parentNode) {
-      const tooltip = svg.parentNode.querySelector('.chart-tooltip');
-      if (tooltip) {
-        const rect = svg.parentNode.getBoundingClientRect();
-        tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
-        tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+    if (hoveredTeamIndex !== null) {
+      const chartContainer = svg.parentNode;
+      if (chartContainer) {
+        const tooltip = chartContainer.querySelector('.chart-tooltip');
+        if (tooltip) {
+          const rect = chartContainer.getBoundingClientRect();
+          tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+          tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+        }
       }
     }
   });
@@ -740,54 +782,108 @@ function renderChart(timelines, animationProgress = 1.0) {
   return svg;
 }
 
+function filterTimelinesForView(all) {
+  if (!all || all.length === 0) {
+    return [];
+  }
+  
+  let arr = all;
+  // League filter
+  if (currentFilter !== 'both') {
+    arr = arr.filter(t => t.leagueId === currentFilter);
+  }
+  // Team status filter
+  if (currentTeamStatusFilter === 'remaining') {
+    arr = arr.filter(t => !t.isEliminated);
+  } else if (currentTeamStatusFilter === 'chopped') {
+    arr = arr.filter(t => t.isEliminated);
+  }
+  // Sort by current FAB (descending, use last point)
+  arr = arr.slice().sort((a, b) => {
+    const aFab = a.points[a.points.length - 1].fab;
+    const bFab = b.points[b.points.length - 1].fab;
+    return bFab - aFab;
+  });
+  return arr;
+}
+
+function applyFiltersAndRerender(container) {
+  const filtered = filterTimelinesForView(baseTimelines);
+  if (isAnimating) {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    isAnimating = false; // we'll restart animation at same progress
+    resumeReplay(container, currentAnimationProgress);
+  } else if (isPaused) {
+    const chart = renderChart(filtered, currentAnimationProgress);
+    const replayBtn = el('button', { class: 'btn replay-btn', onclick: () => resumeReplay(container, currentAnimationProgress) }, '▶ Resume');
+    const controls = el('div', { class: 'chart-controls' },
+      replayBtn,
+      buildLeagueSegmentedControl(() => applyFiltersAndRerender(container)),
+      buildTeamStatusSegmentedControl(() => applyFiltersAndRerender(container))
+    );
+    const chartContainer = el('div', { class: 'chart-container' });
+    chartContainer.appendChild(chart);
+    container.replaceChildren(controls, chartContainer);
+  } else {
+    // static state
+    const chart = renderChart(filtered, 1.0);
+    const replayBtn = el('button', { class: 'btn replay-btn', onclick: () => startReplay(container) }, '▶ Replay');
+    const controls = el('div', { class: 'chart-controls' },
+      replayBtn,
+      buildLeagueSegmentedControl(() => applyFiltersAndRerender(container)),
+      buildTeamStatusSegmentedControl(() => applyFiltersAndRerender(container))
+    );
+    const chartContainer = el('div', { class: 'chart-container' });
+    chartContainer.appendChild(chart);
+    container.replaceChildren(controls, chartContainer);
+  }
+}
+
 async function renderFABSpendingView(container, filter) {
   container.replaceChildren(el('div', { class: 'loading' }, 'Loading FAB data...'));
   
   try {
     // Fetch all data
-    const allTimelines = [];
+    baseTimelines = [];
     for (const leagueCfg of LEAGUE_IDS) {
       await fetchLeagueTransactions(leagueCfg.id);
       const timelines = computeFABTimeline(leagueCfg.id);
-      allTimelines.push(...timelines);
+      baseTimelines.push(...timelines);
     }
-    
-    // Filter based on current selection
-    let filteredTimelines = allTimelines;
-    if (filter !== 'both') {
-      filteredTimelines = allTimelines.filter(t => t.leagueId === filter);
-    }
-    
-    // Sort by current FAB (descending)
-    filteredTimelines.sort((a, b) => {
-      const aFab = a.points[a.points.length - 1].fab;
-      const bFab = b.points[b.points.length - 1].fab;
-      return bFab - aFab;
+
+    // Calculate static max week from all base timelines
+    staticMaxWeek = 0;
+    baseTimelines.forEach(t => {
+      t.points.forEach(p => {
+        const weekPos = p.week + p.weekProgress;
+        if (weekPos > staticMaxWeek) staticMaxWeek = weekPos;
+      });
     });
-    
-    // Reset animation state when changing filters
+    if (staticMaxWeek === 0) staticMaxWeek = MAX_WEEKS;
+
+    // Initialize filters and state
+    currentFilter = filter || currentFilter;
     isAnimating = false;
     isPaused = false;
     pausedProgress = 0;
     hoveredTeamIndex = null;
-    
+    currentAnimationProgress = 1.0;
+
+    // Initial render
+    const filteredTimelines = filterTimelinesForView(baseTimelines);
     const chart = renderChart(filteredTimelines);
-    
-    const replayBtn = el('button', {
-      class: 'btn replay-btn',
-      onclick: () => startReplay(filteredTimelines, container, filter)
-    }, '▶ Replay');
-    
+
+    const replayBtn = el('button', { class: 'btn replay-btn', onclick: () => startReplay(container) }, '▶ Replay');
+
     const controls = el('div', { class: 'chart-controls' },
       replayBtn,
-      buildSegmentedControl((newFilter) => {
-        renderFABSpendingView(container, newFilter);
-      })
+      buildLeagueSegmentedControl(() => applyFiltersAndRerender(container)),
+      buildTeamStatusSegmentedControl(() => applyFiltersAndRerender(container))
     );
-    
+
     const chartContainer = el('div', { class: 'chart-container' });
     chartContainer.appendChild(chart);
-    
+
     container.replaceChildren(controls, chartContainer);
   } catch (err) {
     container.replaceChildren(
@@ -796,77 +892,69 @@ async function renderFABSpendingView(container, filter) {
   }
 }
 
-function pauseReplay(timelines, container, filter, currentProgress) {
+function pauseReplay(container, currentProgress) {
   if (!isAnimating) return;
   isPaused = true;
   isAnimating = false;
   pausedProgress = currentProgress;
+  currentAnimationProgress = currentProgress;
   
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
   }
   
-  // Show paused state with resume button
-  const chart = renderChart(timelines, currentProgress);
-  
-  const replayBtn = el('button', {
-    class: 'btn replay-btn',
-    onclick: () => resumeReplay(timelines, container, filter, pausedProgress)
-  }, '▶ Resume');
-  
-  const controls = el('div', { class: 'chart-controls' },
-    replayBtn,
-    buildSegmentedControl((newFilter) => {
-      isAnimating = false;
-      isPaused = false;
-      pausedProgress = 0;
-      renderFABSpendingView(container, newFilter);
-    })
-  );
-  
-  const chartContainer = el('div', { class: 'chart-container' });
-  chartContainer.appendChild(chart);
-  
-  container.replaceChildren(controls, chartContainer);
+  applyFiltersAndRerender(container);
 }
 
-function resumeReplay(timelines, container, filter, startProgress) {
+function resumeReplay(container, startProgress) {
   if (isAnimating) return;
   
   isPaused = false;
   isAnimating = true;
   const startTime = Date.now() - (startProgress * REPLAY_DURATION_MS);
   
+  // Create controls once before animation starts
+  const replayBtn = el('button', {
+    class: 'btn replay-btn',
+    onclick: () => pauseReplay(container, currentAnimationProgress)
+  }, '⏸ Pause');
+  
+  const controls = el('div', { class: 'chart-controls' },
+    replayBtn,
+    buildLeagueSegmentedControl(() => applyFiltersAndRerender(container)),
+    buildTeamStatusSegmentedControl(() => applyFiltersAndRerender(container))
+  );
+  
+  const chartContainer = el('div', { class: 'chart-container' });
+  
+  // Create persistent tooltip element
+  const tooltip = el('div', { class: 'chart-tooltip', style: 'display: none;' });
+  chartContainer.appendChild(tooltip);
+  
+  // Add controls to container once
+  container.replaceChildren(controls, chartContainer);
+  
+  // Render initial frame
+  const initialChart = renderChart(filterTimelinesForView(baseTimelines), startProgress);
+  chartContainer.insertBefore(initialChart, tooltip);
+  
   const animate = () => {
     const elapsed = Date.now() - startTime;
     const progress = Math.min(elapsed / REPLAY_DURATION_MS, 1.0);
     pausedProgress = progress;
+    currentAnimationProgress = progress;
     
-    const chart = renderChart(timelines, progress);
+    const filteredTimelines = filterTimelinesForView(baseTimelines);
+    const chart = renderChart(filteredTimelines, progress);
     
-    const replayBtn = el('button', {
-      class: 'btn replay-btn',
-      onclick: () => pauseReplay(timelines, container, filter, progress)
-    }, '⏸ Pause');
-    
-    const controls = el('div', { class: 'chart-controls' },
-      replayBtn,
-      buildSegmentedControl((newFilter) => {
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId);
-        }
-        isAnimating = false;
-        isPaused = false;
-        pausedProgress = 0;
-        renderFABSpendingView(container, newFilter);
-      })
-    );
-    
-    const chartContainer = el('div', { class: 'chart-container' });
-    chartContainer.appendChild(chart);
-    
-    container.replaceChildren(controls, chartContainer);
+    // Replace only the SVG, keep the tooltip
+    const existingSvg = chartContainer.querySelector('svg');
+    if (existingSvg) {
+      chartContainer.replaceChild(chart, existingSvg);
+    } else {
+      chartContainer.insertBefore(chart, chartContainer.firstChild);
+    }
     
     if (progress < 1.0 && !isPaused) {
       animationFrameId = requestAnimationFrame(animate);
@@ -875,45 +963,31 @@ function resumeReplay(timelines, container, filter, startProgress) {
       isPaused = false;
       pausedProgress = 0;
       // Show replay button again
-      renderFinalState(timelines, container, filter);
+      renderFinalState(container);
     }
   };
   
   animate();
 }
 
-function renderFinalState(timelines, container, filter) {
-  const chart = renderChart(timelines, 1.0);
-  
-  const replayBtn = el('button', {
-    class: 'btn replay-btn',
-    onclick: () => startReplay(timelines, container, filter)
-  }, '▶ Replay');
-  
-  const controls = el('div', { class: 'chart-controls' },
-    replayBtn,
-    buildSegmentedControl((newFilter) => {
-      renderFABSpendingView(container, newFilter);
-    })
-  );
-  
-  const chartContainer = el('div', { class: 'chart-container' });
-  chartContainer.appendChild(chart);
-  
-  container.replaceChildren(controls, chartContainer);
+function renderFinalState(container) {
+  isAnimating = false;
+  isPaused = false;
+  currentAnimationProgress = 1.0;
+  applyFiltersAndRerender(container);
 }
 
-function startReplay(timelines, container, filter) {
+function startReplay(container) {
   if (isAnimating) {
     // If paused, resume from where we left off
     if (isPaused) {
-      resumeReplay(timelines, container, filter, pausedProgress);
+      resumeReplay(container, pausedProgress);
     }
     return;
   }
   
   pausedProgress = 0;
-  resumeReplay(timelines, container, filter, 0);
+  resumeReplay(container, 0);
 }
 
 export async function loadFABSpending() {
