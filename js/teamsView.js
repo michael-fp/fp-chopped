@@ -66,18 +66,15 @@ export function updateResponsiveLayout() {
 }
 
 export async function initLeagues() {
-  // Detect current week and scoring week once before loading leagues
-  if (!state.currentWeek || !state.scoringWeek) {
+  // Detect current week once before loading leagues
+  if (!state.currentWeek) {
     try {
-      // Use first league to detect weeks
-      const weeks = await api.detectWeeks(LEAGUE_IDS[0].id, MAX_WEEKS);
-      state.currentWeek = weeks.currentWeek;
-      state.scoringWeek = weeks.scoringWeek;
-      console.log(`Detected weeks - Current: ${state.currentWeek}, Scoring: ${state.scoringWeek}`);
+      // Use first league to detect current week
+      state.currentWeek = await api.detectCurrentWeek(LEAGUE_IDS[0].id, MAX_WEEKS);
+      console.log(`Detected current week: ${state.currentWeek}`);
     } catch (e) {
-      console.error('Failed to detect weeks, defaulting to 1:', e);
+      console.error('Failed to detect current week, defaulting to 1:', e);
       state.currentWeek = 1;
-      state.scoringWeek = 1;
     }
   }
 
@@ -90,7 +87,7 @@ export async function initLeagues() {
         cache.leagues.get(leagueCfg.id) || api.league(leagueCfg.id),
         cache.rosters.get(leagueCfg.id) || api.rosters(leagueCfg.id),
         cache.users.get(leagueCfg.id) || api.leagueUsers(leagueCfg.id),
-        cache.matchups.get(leagueCfg.id) || api.matchups(leagueCfg.id, state.scoringWeek)
+        cache.matchups.get(leagueCfg.id) || api.matchups(leagueCfg.id, state.currentWeek)
       ]);
 
       cache.leagues.set(leagueCfg.id, league);

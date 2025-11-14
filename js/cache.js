@@ -13,6 +13,5 @@ export const state = {
   activePrimaryTab: 'teams',
   statsLoaded: false,
   fabSpendingLoaded: false,
-  currentWeek: null,  // Current NFL calendar week (for FAB chart timeline)
-  scoringWeek: null   // Most recent week with actual scoring data (for displaying points)
+  currentWeek: null  // Dynamically detected current NFL week (max of scoring week and transaction week)
 };

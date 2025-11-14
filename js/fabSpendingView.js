@@ -415,6 +415,8 @@ function renderChart(timelines, animationProgress = 1.0) {
   const maxFab = staticMaxFab;
   const maxWeek = staticMaxWeek;
   
+  // X-axis scales from week 1 to maxWeek, but data starts at week 0
+  // Map week 0 -> left edge (week 1 label), week maxWeek -> right edge
   const xScale = (weekWithProgress) => marginLeft + (weekWithProgress / maxWeek) * chartWidth;
   const yScale = (fab) => marginTop + chartHeight - (fab / maxFab) * chartHeight;
   
@@ -454,8 +456,8 @@ function renderChart(timelines, animationProgress = 1.0) {
     gridGroup.appendChild(text);
   }
   
-  // Vertical grid lines (weeks)
-  for (let week = 0; week <= maxWeek; week += 2) {
+  // Vertical grid lines (weeks) - start at 1, not 0
+  for (let week = 1; week <= maxWeek; week += 2) {
     const x = xScale(week);
     
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -554,6 +556,7 @@ function renderChart(timelines, animationProgress = 1.0) {
     // At full animation, extend timelines to their end point
     if (animationProgress === 1.0 && visiblePoints.length > 0) {
       const lastVisible = visiblePoints[visiblePoints.length - 1];
+      const currentWeek = state.currentWeek || maxWeek;
       
       if (timeline.isEliminated && timeline.eliminatedWeek) {
         // For eliminated teams, extend to elimination week
@@ -570,9 +573,10 @@ function renderChart(timelines, animationProgress = 1.0) {
           }
         }
       } else {
-        // For non-eliminated teams, extend to current week
-        const currentWeek = state.currentWeek || 1;
-        if (lastVisible.week < currentWeek) {
+        // For non-eliminated teams, ALWAYS extend to current week
+        // Even if they have no transactions in the current week
+        const lastWeek = lastVisible.week;
+        if (lastWeek < currentWeek) {
           visiblePoints.push({ 
             week: currentWeek, 
             weekProgress: 0,
@@ -972,15 +976,8 @@ async function renderFABSpendingView(container, filter) {
       teamColorMap.set(teamKey, CHART_COLORS[index % CHART_COLORS.length]);
     });
 
-    // Calculate static max week from all base timelines
-    staticMaxWeek = 0;
-    baseTimelines.forEach(t => {
-      t.points.forEach(p => {
-        const weekPos = p.week + p.weekProgress;
-        if (weekPos > staticMaxWeek) staticMaxWeek = weekPos;
-      });
-    });
-    if (staticMaxWeek === 0) staticMaxWeek = MAX_WEEKS;
+    // Use current week as staticMaxWeek (not derived from transaction data)
+    staticMaxWeek = state.currentWeek || MAX_WEEKS;
 
     // Initialize filters and state
     currentFilter = filter || currentFilter;

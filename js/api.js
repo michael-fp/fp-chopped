@@ -106,36 +106,53 @@ export const api = {
     ),
 
   /**
-   * Detects the current NFL week by finding the most recent week with scoring
-   * Since Sleeper creates matchups for all future weeks, we use scoring data to determine the actual current week
+   * Detects the current NFL week by finding the most recent week with scoring or transactions
+   * Checks both matchups (for scoring) and transactions to determine the actual current week
    * @param {string} leagueId - Sleeper league ID to check
    * @param {number} maxWeek - Maximum week to check (default 18)
-   * @returns {Promise<{currentWeek: number, scoringWeek: number}>}
+   * @returns {Promise<number>} The current week number
    */
-  async detectWeeks(leagueId, maxWeek = 18) {
-    let currentWeek = 1;
+  async detectCurrentWeek(leagueId, maxWeek = 18) {
+    let scoringWeek = 1;
+    let transactionWeek = 1;
     
-    // Check weeks in reverse order to find the most recent week with scoring
+    // Check for most recent week with scoring
     for (let week = maxWeek; week >= 1; week--) {
       try {
         const matchups = await getJSON(
           `https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`
         );
         
-        // Check if any team has points > 0 (indicates week has started/completed)
+        // Check if any team has points > 0
         const hasScoring = matchups.some(m => m.points && m.points > 0);
         if (hasScoring) {
-          currentWeek = week;
-          break; // Found the current week
+          scoringWeek = week;
+          break;
         }
       } catch (e) {
-        // Week doesn't exist, continue checking earlier weeks
         continue;
       }
     }
     
-    // Both currentWeek and scoringWeek are the same (most recent week with scoring)
-    return { currentWeek, scoringWeek: currentWeek };
+    // Check for most recent week with transactions
+    for (let week = maxWeek; week >= 1; week--) {
+      try {
+        const transactions = await getJSON(
+          `https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`
+        );
+        
+        // Check if there are any completed transactions
+        if (transactions && transactions.length > 0) {
+          transactionWeek = week;
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // Return the maximum of scoring week and transaction week
+    return Math.max(scoringWeek, transactionWeek);
   }
 };
 
