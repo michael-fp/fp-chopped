@@ -1,6 +1,6 @@
 // js/statsView.js
 import { LEAGUE_IDS, MAX_WEEKS } from './constants.js';
-import { cache } from './cache.js';
+import { cache, state } from './cache.js';
 import { api } from './api.js';
 import { el, fmtFab } from './dom.js';
 
@@ -24,6 +24,27 @@ async function fetchLeagueTransactions(leagueId) {
   }
   cache.transactions.set(leagueId, all);
   return all;
+}
+
+async function fetchLeagueMatchups(leagueId) {
+  const allMatchups = [];
+  const maxWeek = state.currentWeek || MAX_WEEKS;
+  
+  for (let wk = 1; wk <= maxWeek; wk++) {
+    try {
+      const matchups = await api.matchups(leagueId, wk);
+      if (Array.isArray(matchups) && matchups.length) {
+        matchups.forEach(m => {
+          m._week = wk;
+          allMatchups.push(m);
+        });
+      }
+    } catch (e) {
+      // ignore per-week errors
+    }
+  }
+  
+  return allMatchups;
 }
 
 function computeLeagueStats(leagueId, transactions) {
@@ -332,6 +353,139 @@ function buildMostSpentSection(
   );
 }
 
+function computeNarrowestEscapes(leagueId, matchups) {
+  const escapesByWeek = [];
+  
+  // Group matchups by week
+  const weekMap = new Map();
+  matchups.forEach(m => {
+    // Skip eliminated teams (they have players: null)
+    if (m.players === null) return;
+    
+    const week = m._week;
+    if (!weekMap.has(week)) {
+      weekMap.set(week, []);
+    }
+    weekMap.get(week).push(m);
+  });
+  
+  // For each week, find the narrowest escape
+  weekMap.forEach((teams, week) => {
+    if (teams.length < 2) return;
+    
+    // Sort by points ascending
+    const sorted = teams.slice().sort((a, b) => (a.points || 0) - (b.points || 0));
+    const lowest = sorted[0];
+    const secondLowest = sorted[1];
+    
+    const gap = (secondLowest.points || 0) - (lowest.points || 0);
+    
+    escapesByWeek.push({
+      week,
+      rosterId: secondLowest.roster_id,
+      leagueId,
+      gap,
+      points: secondLowest.points || 0
+    });
+  });
+  
+  return escapesByWeek;
+}
+
+function computeHighScores(leagueId, matchups) {
+  const scores = [];
+  
+  matchups.forEach(m => {
+    // Skip eliminated teams
+    if (m.players === null) return;
+    
+    scores.push({
+      week: m._week,
+      rosterId: m.roster_id,
+      leagueId,
+      points: m.points || 0
+    });
+  });
+  
+  return scores;
+}
+
+function rowsFromNarrowestEscapes(escapes) {
+  const sorted = escapes.slice().sort((a, b) => a.gap - b.gap);
+  return sorted.slice(0, 10).map(e => ({
+    team: getOwnerLabel(e.leagueId, e.rosterId),
+    week: e.week,
+    gap: e.gap.toFixed(2) + ' pts'
+  }));
+}
+
+function rowsFromHighScores(scores) {
+  const sorted = scores.slice().sort((a, b) => b.points - a.points);
+  return sorted.slice(0, 10).map(s => ({
+    team: getOwnerLabel(s.leagueId, s.rosterId),
+    week: s.week,
+    points: s.points.toFixed(2)
+  }));
+}
+
+function buildNarrowestEscapesSection(matchupsByLeague, combined) {
+  const league1Id = LEAGUE_IDS[0].id;
+  const league2Id = LEAGUE_IDS[1].id;
+  const tables = [
+    {
+      title: 'All Leagues',
+      rows: rowsFromNarrowestEscapes(combined.narrowestEscapes)
+    },
+    {
+      title: getLeagueName(league1Id),
+      rows: rowsFromNarrowestEscapes(matchupsByLeague[league1Id].narrowestEscapes)
+    },
+    {
+      title: getLeagueName(league2Id),
+      rows: rowsFromNarrowestEscapes(matchupsByLeague[league2Id].narrowestEscapes)
+    }
+  ];
+  const columns = [
+    { key: 'team', label: 'Team', align: 'left' },
+    { key: 'week', label: 'Week', align: 'right' },
+    { key: 'gap', label: 'Points Gap', align: 'right' }
+  ];
+  return createStatsSection(
+    'Narrowest Escapes',
+    tables,
+    columns
+  );
+}
+
+function buildHighScoresSection(matchupsByLeague, combined) {
+  const league1Id = LEAGUE_IDS[0].id;
+  const league2Id = LEAGUE_IDS[1].id;
+  const tables = [
+    {
+      title: 'All Leagues',
+      rows: rowsFromHighScores(combined.highScores)
+    },
+    {
+      title: getLeagueName(league1Id),
+      rows: rowsFromHighScores(matchupsByLeague[league1Id].highScores)
+    },
+    {
+      title: getLeagueName(league2Id),
+      rows: rowsFromHighScores(matchupsByLeague[league2Id].highScores)
+    }
+  ];
+  const columns = [
+    { key: 'team', label: 'Team', align: 'left' },
+    { key: 'week', label: 'Week', align: 'right' },
+    { key: 'points', label: 'Points', align: 'right' }
+  ];
+  return createStatsSection(
+    'High Scores',
+    tables,
+    columns
+  );
+}
+
 export async function loadStats() {
   const container = document.getElementById('stats-content');
   container.replaceChildren(
@@ -345,10 +499,13 @@ export async function loadStats() {
   try {
     const playersAll = await api.playersAllNFL();
     const statsByLeague = {};
+    const matchupsByLeague = {};
     const combined = {
       chops: new Map(),
       spent: new Map(),
-      winningBids: []
+      winningBids: [],
+      narrowestEscapes: [],
+      highScores: []
     };
 
     for (const cfg of LEAGUE_IDS) {
@@ -384,6 +541,19 @@ export async function loadStats() {
       combined.winningBids.push(
         ...leagueStats.winningBids
       );
+      
+      // Fetch and compute matchup stats
+      const matchups = await fetchLeagueMatchups(cfg.id);
+      const narrowestEscapes = computeNarrowestEscapes(cfg.id, matchups);
+      const highScores = computeHighScores(cfg.id, matchups);
+      
+      matchupsByLeague[cfg.id] = {
+        narrowestEscapes,
+        highScores
+      };
+      
+      combined.narrowestEscapes.push(...narrowestEscapes);
+      combined.highScores.push(...highScores);
     }
 
     const sections = [
@@ -400,6 +570,14 @@ export async function loadStats() {
       buildMostSpentSection(
         playersAll,
         statsByLeague,
+        combined
+      ),
+      buildNarrowestEscapesSection(
+        matchupsByLeague,
+        combined
+      ),
+      buildHighScoresSection(
+        matchupsByLeague,
         combined
       )
     ];
