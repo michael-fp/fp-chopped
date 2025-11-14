@@ -24,6 +24,7 @@ let hoveredTeamIndex = null;
 let baseTimelines = []; // all timelines across leagues for current load
 let staticMaxFab = 1000; // FAB always starts at 1000
 let staticMaxWeek = 0;
+let teamColorMap = new Map(); // Stable color mapping for each team
 
 async function fetchLeagueTransactions(leagueId) {
   if (cache.transactions.has(leagueId)) {
@@ -442,7 +443,8 @@ function renderChart(timelines, animationProgress = 1.0) {
   // First pass: calculate visible points for each timeline
   sortedTimelines.forEach(({ originalIndex, ...timeline }) => {
     const index = originalIndex;
-    const color = CHART_COLORS[index % CHART_COLORS.length];
+    const teamKey = `${timeline.leagueId}-${timeline.rosterId}`;
+    const color = teamColorMap.get(teamKey) || CHART_COLORS[0];
     
     // Determine which points to show based on animation progress
     let visiblePoints = timeline.points;
@@ -575,7 +577,9 @@ function renderChart(timelines, animationProgress = 1.0) {
     const timeline = sortedTimelines.find(t => t.originalIndex === index);
     if (!timeline) return;
     
-    const color = isEliminatedAtCurrentTime ? '#999' : CHART_COLORS[index % CHART_COLORS.length];
+    const teamKey = `${timeline.leagueId}-${timeline.rosterId}`;
+    const teamColor = teamColorMap.get(teamKey) || CHART_COLORS[0];
+    const color = isEliminatedAtCurrentTime ? '#999' : teamColor;
     
     // Create path but replace last point with actual avatar position (with jitter)
     const adjustedPoints = [...visiblePoints];
@@ -634,7 +638,8 @@ function renderChart(timelines, animationProgress = 1.0) {
   
   avatarPositions.forEach(({ originalIndex, timeline, x, y, fab, xOffset, yOffset, visiblePoints, isEliminatedAtCurrentTime }) => {
     const index = originalIndex;
-    const color = CHART_COLORS[index % CHART_COLORS.length];
+    const teamKey = `${timeline.leagueId}-${timeline.rosterId}`;
+    const color = teamColorMap.get(teamKey) || CHART_COLORS[0];
     
     // Apply jitter offsets
     const endX = x + xOffset;
@@ -876,6 +881,13 @@ async function renderFABSpendingView(container, filter) {
       const timelines = computeFABTimeline(leagueCfg.id);
       baseTimelines.push(...timelines);
     }
+
+    // Assign stable colors to each team based on their unique identifier
+    teamColorMap.clear();
+    baseTimelines.forEach((t, index) => {
+      const teamKey = `${t.leagueId}-${t.rosterId}`;
+      teamColorMap.set(teamKey, CHART_COLORS[index % CHART_COLORS.length]);
+    });
 
     // Calculate static max week from all base timelines
     staticMaxWeek = 0;
