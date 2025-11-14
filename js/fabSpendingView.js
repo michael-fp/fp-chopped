@@ -61,7 +61,7 @@ let teamColorMap = new Map();
 // === DATA FETCHING ===
 
 /**
- * Fetches all transactions for a league across all weeks
+ * Fetches all transactions for a league across all weeks up to current week
  * Uses cache if available, otherwise fetches from Sleeper API
  * @param {string} leagueId - Sleeper league ID
  * @returns {Promise<Array>} Array of transaction objects with _week property added
@@ -72,9 +72,11 @@ async function fetchLeagueTransactions(leagueId) {
     return cache.transactions.get(leagueId);
   }
   
-  // Fetch all weeks of transactions
+  // Only fetch transactions up to the current week
+  const maxWeekToFetch = state.currentWeek || MAX_WEEKS;
+  
   const all = [];
-  for (let wk = 1; wk <= MAX_WEEKS; wk++) {
+  for (let wk = 1; wk <= maxWeekToFetch; wk++) {
     try {
       const arr = await api.transactions(leagueId, wk);
       if (Array.isArray(arr) && arr.length) {
