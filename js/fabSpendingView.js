@@ -1,5 +1,5 @@
 // js/fabSpendingView.js
-import { LEAGUE_IDS, MAX_WEEKS } from './constants.js';
+import { LEAGUE_IDS, MAX_WEEKS, CURRENT_WEEK } from './constants.js';
 import { cache } from './cache.js';
 import { api } from './api.js';
 import { el } from './dom.js';
@@ -483,15 +483,29 @@ function renderChart(timelines, animationProgress = 1.0) {
       }
     }
     
-    // Check if eliminated and past elimination week (at full animation or final state)
-    if (timeline.isEliminated && timeline.eliminatedWeek && animationProgress === 1.0) {
-      visiblePoints = visiblePoints.filter(p => p.week <= timeline.eliminatedWeek);
-      if (visiblePoints.length > 0) {
-        const lastVisible = visiblePoints[visiblePoints.length - 1];
-        if (lastVisible.week < timeline.eliminatedWeek) {
-          // Extend to elimination week with same FAB
+    // At full animation, extend timelines to their end point
+    if (animationProgress === 1.0 && visiblePoints.length > 0) {
+      const lastVisible = visiblePoints[visiblePoints.length - 1];
+      
+      if (timeline.isEliminated && timeline.eliminatedWeek) {
+        // For eliminated teams, extend to elimination week
+        visiblePoints = visiblePoints.filter(p => p.week <= timeline.eliminatedWeek);
+        if (visiblePoints.length > 0) {
+          const lastFiltered = visiblePoints[visiblePoints.length - 1];
+          if (lastFiltered.week < timeline.eliminatedWeek) {
+            visiblePoints.push({ 
+              week: timeline.eliminatedWeek, 
+              weekProgress: 0,
+              fab: lastFiltered.fab,
+              timestamp: lastFiltered.timestamp
+            });
+          }
+        }
+      } else {
+        // For non-eliminated teams, extend to current week
+        if (lastVisible.week < CURRENT_WEEK) {
           visiblePoints.push({ 
-            week: timeline.eliminatedWeek, 
+            week: CURRENT_WEEK, 
             weekProgress: 0,
             fab: lastVisible.fab,
             timestamp: lastVisible.timestamp
