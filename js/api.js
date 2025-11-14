@@ -106,33 +106,27 @@ export const api = {
     ),
 
   /**
-   * Detects the current NFL week and the most recent week with scoring
-   * Current week = highest week number where matchups exist
-   * Scoring week = highest week number where at least one team has points > 0
+   * Detects the current NFL week by finding the most recent week with scoring
+   * Since Sleeper creates matchups for all future weeks, we use scoring data to determine the actual current week
    * @param {string} leagueId - Sleeper league ID to check
    * @param {number} maxWeek - Maximum week to check (default 18)
    * @returns {Promise<{currentWeek: number, scoringWeek: number}>}
    */
   async detectWeeks(leagueId, maxWeek = 18) {
     let currentWeek = 1;
-    let scoringWeek = 1;
     
-    // Check weeks in reverse order to find highest week with matchups
+    // Check weeks in reverse order to find the most recent week with scoring
     for (let week = maxWeek; week >= 1; week--) {
       try {
         const matchups = await getJSON(
           `https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`
         );
         
-        // Matchups exist for this week - this is the current week if we haven't found one yet
-        if (currentWeek === 1 || week > currentWeek) {
-          currentWeek = week;
-        }
-        
-        // Check if any team has points > 0 (indicates week has scoring data)
+        // Check if any team has points > 0 (indicates week has started/completed)
         const hasScoring = matchups.some(m => m.points && m.points > 0);
-        if (hasScoring && (scoringWeek === 1 || week > scoringWeek)) {
-          scoringWeek = week;
+        if (hasScoring) {
+          currentWeek = week;
+          break; // Found the current week
         }
       } catch (e) {
         // Week doesn't exist, continue checking earlier weeks
@@ -140,7 +134,8 @@ export const api = {
       }
     }
     
-    return { currentWeek, scoringWeek };
+    // Both currentWeek and scoringWeek are the same (most recent week with scoring)
+    return { currentWeek, scoringWeek: currentWeek };
   }
 };
 
