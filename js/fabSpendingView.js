@@ -1,53 +1,107 @@
 // js/fabSpendingView.js
+// FAB (Free Agent Budget) Spending Chart View
+// 
+// This module renders an animated line chart showing how each team's FAB decreases
+// over the course of the season as they make waiver wire bids. The chart features:
+// - Animated replay showing FAB changes over time with transaction-level precision
+// - Smooth Bézier curves for line rendering
+// - Hover interactions with tooltips and visual effects (glow, opacity changes)
+// - League and team status filters that work during animation
+// - Team avatars at line endpoints with jitter to prevent overlap
+// - Graying out of eliminated teams at their elimination week
+
 import { LEAGUE_IDS, MAX_WEEKS, CURRENT_WEEK } from './constants.js';
 import { cache } from './cache.js';
 import { api } from './api.js';
 import { el } from './dom.js';
 
+// === CONFIGURATION ===
+
 // Animation duration in milliseconds - change this to adjust replay speed
+// Default: 15 seconds to replay entire season
 export const REPLAY_DURATION_MS = 15000;
 
+// Color palette for team lines - 15 colors to support up to 15 teams per league
 const CHART_COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
   '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
   '#E63946', '#A8DADC', '#457B9D', '#F1FAEE', '#E76F51'
 ];
 
-let currentFilter = 'both';
-let currentTeamStatusFilter = 'all'; // 'all', 'remaining', or 'chopped'
-let isAnimating = false;
-let isPaused = false;
-let animationFrameId = null;
-let pausedProgress = 0;
-let currentAnimationProgress = 1.0;
-let hoveredTeamIndex = null;
-let baseTimelines = []; // all timelines across leagues for current load
-let staticMaxFab = 1000; // FAB always starts at 1000
-let staticMaxWeek = 0;
-let teamColorMap = new Map(); // Stable color mapping for each team
+// === STATE MANAGEMENT ===
+// Module-level state variables that persist across renders
 
+// Current league filter: 'both', or specific league ID
+let currentFilter = 'both';
+
+// Current team status filter: 'all', 'remaining', or 'chopped'
+let currentTeamStatusFilter = 'all';
+
+// Animation state flags
+let isAnimating = false;  // True when replay is actively running
+let isPaused = false;     // True when replay is paused
+let animationFrameId = null;  // requestAnimationFrame ID for cancellation
+let pausedProgress = 0;   // Progress (0-1) where animation was paused
+let currentAnimationProgress = 1.0;  // Current animation progress (0-1)
+
+// Hover state - tracks which team is currently hovered (by originalIndex)
+let hoveredTeamIndex = null;
+
+// Data storage
+let baseTimelines = [];  // All team timelines from all leagues (source of truth)
+
+// Chart bounds - calculated once from baseTimelines and used for all renders
+let staticMaxFab = 1000;  // FAB always starts at 1000 in these leagues
+let staticMaxWeek = 0;    // Calculated from actual transaction data
+
+// Stable color mapping: Maps "leagueId-rosterId" -> color
+// This ensures each team keeps the same color when filters change
+let teamColorMap = new Map();
+
+// === DATA FETCHING ===
+
+/**
+ * Fetches all transactions for a league across all weeks
+ * Uses cache if available, otherwise fetches from Sleeper API
+ * @param {string} leagueId - Sleeper league ID
+ * @returns {Promise<Array>} Array of transaction objects with _week property added
+ */
 async function fetchLeagueTransactions(leagueId) {
+  // Return cached data if available
   if (cache.transactions.has(leagueId)) {
     return cache.transactions.get(leagueId);
   }
+  
+  // Fetch all weeks of transactions
   const all = [];
   for (let wk = 1; wk <= MAX_WEEKS; wk++) {
     try {
       const arr = await api.transactions(leagueId, wk);
       if (Array.isArray(arr) && arr.length) {
         arr.forEach(tx => {
-          tx._week = wk;
+          tx._week = wk;  // Add week number to each transaction
           all.push(tx);
         });
       }
     } catch (e) {
-      // ignore per-week errors
+      // Silently ignore errors for individual weeks (may not have data yet)
     }
   }
+  
+  // Cache the results
   cache.transactions.set(leagueId, all);
   return all;
 }
 
+// === TEAM DATA HELPERS ===
+
+/**
+ * Gets the display name for a team
+ * Looks up roster by ID, then finds the owning user
+ * @param {string} leagueId - Sleeper league ID
+ * @param {number} rosterId - Roster ID within the league
+ * @returns {string} Team name (from metadata), display name, username, or 'Unknown'
+ */
 function getTeamName(leagueId, rosterId) {
   const rosters = cache.rosters.get(leagueId) || [];
   const roster = rosters.find(r => Number(r.roster_id) === Number(rosterId));
@@ -57,10 +111,17 @@ function getTeamName(leagueId, rosterId) {
   const user = users.find(u => u.user_id === roster.owner_id);
   if (!user) return 'Unknown';
   
+  // Prefer custom team name from metadata, fall back to display name or username
   return (user.metadata && (user.metadata.team_name || user.metadata.team_name_full)) ||
          user.display_name || user.username || 'Unknown';
 }
 
+/**
+ * Gets the avatar URL for a team's owner
+ * @param {string} leagueId - Sleeper league ID
+ * @param {number} rosterId - Roster ID within the league
+ * @returns {string|null} Avatar ID (to be used with Sleeper CDN), or null if none
+ */
 function getTeamAvatar(leagueId, rosterId) {
   const rosters = cache.rosters.get(leagueId) || [];
   const roster = rosters.find(r => Number(r.roster_id) === Number(rosterId));
@@ -71,8 +132,15 @@ function getTeamAvatar(leagueId, rosterId) {
   return user && user.avatar ? user.avatar : null;
 }
 
+/**
+ * Gets 2-letter initials for a team (for teams without avatar images)
+ * @param {string} leagueId - Sleeper league ID  
+ * @param {number} rosterId - Roster ID within the league
+ * @returns {string} Up to 2 uppercase letters from team name
+ */
 function getTeamInitials(leagueId, rosterId) {
   const name = getTeamName(leagueId, rosterId);
+  // Take first letter of first two words
   return name.split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase();
 }
 
@@ -556,7 +624,7 @@ function renderChart(timelines, animationProgress = 1.0) {
   
   // Apply jitter to overlapping positions
   const JITTER_THRESHOLD = 5;
-  const JITTER_OFFSET = 5; // Increased by 2px
+  const JITTER_OFFSET = 7; // Total jitter offset for avatar separation
   
   avatarPositions.forEach((pos, i) => {
     let yOffset = 0;
