@@ -754,7 +754,16 @@ function renderChart(timelines, animationProgress = 1.0) {
       `;
       tooltip.style.display = 'block';
       
-      // During replay, the next frame will reflect hover state automatically
+      // If not animating, re-render to show hover effects
+      if (!isAnimating) {
+        const chartContainer = svg.parentNode;
+        const existingSvg = chartContainer?.querySelector('svg');
+        if (existingSvg && chartContainer) {
+          const filtered = filterTimelinesForView(baseTimelines);
+          const newChart = renderChart(filtered, currentAnimationProgress);
+          chartContainer.replaceChild(newChart, existingSvg);
+        }
+      }
     });
   });
   
@@ -766,6 +775,16 @@ function renderChart(timelines, animationProgress = 1.0) {
         const tooltip = chartContainer.querySelector('.chart-tooltip');
         if (tooltip) {
           tooltip.style.display = 'none';
+        }
+        
+        // If not animating, re-render to remove hover effects
+        if (!isAnimating) {
+          const existingSvg = chartContainer.querySelector('svg');
+          if (existingSvg) {
+            const filtered = filterTimelinesForView(baseTimelines);
+            const newChart = renderChart(filtered, currentAnimationProgress);
+            chartContainer.replaceChild(newChart, existingSvg);
+          }
         }
       }
     }
