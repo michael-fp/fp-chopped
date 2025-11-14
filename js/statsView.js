@@ -28,7 +28,9 @@ async function fetchLeagueTransactions(leagueId) {
 
 async function fetchLeagueMatchups(leagueId) {
   const allMatchups = [];
-  const maxWeek = state.currentWeek || MAX_WEEKS;
+  // Only fetch completed weeks (current week - 1)
+  // Current week is the week with scoring data, so the week before is definitely complete
+  const maxWeek = state.currentWeek ? state.currentWeek - 1 : MAX_WEEKS;
   
   for (let wk = 1; wk <= maxWeek; wk++) {
     try {
