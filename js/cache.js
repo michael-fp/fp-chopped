@@ -4,7 +4,8 @@ export const cache = {
   rosters: new Map(),
   users: new Map(),
   playersAll: null,
-  transactions: new Map()
+  transactions: new Map(),
+  matchups: new Map()
 };
 
 export const state = {

@@ -1,5 +1,5 @@
 // js/teamsView.js
-import { LEAGUE_IDS, POSITION_COLORS } from './constants.js';
+import { LEAGUE_IDS, POSITION_COLORS, CURRENT_WEEK } from './constants.js';
 import { cache, state } from './cache.js';
 import { api } from './api.js';
 import { el, fmtFab } from './dom.js';
@@ -71,15 +71,17 @@ export async function initLeagues() {
     columnsEl.append(col);
 
     try {
-      const [league, rosters, users] = await Promise.all([
+      const [league, rosters, users, matchups] = await Promise.all([
         cache.leagues.get(leagueCfg.id) || api.league(leagueCfg.id),
         cache.rosters.get(leagueCfg.id) || api.rosters(leagueCfg.id),
-        cache.users.get(leagueCfg.id) || api.leagueUsers(leagueCfg.id)
+        cache.users.get(leagueCfg.id) || api.leagueUsers(leagueCfg.id),
+        cache.matchups.get(leagueCfg.id) || api.matchups(leagueCfg.id, CURRENT_WEEK)
       ]);
 
       cache.leagues.set(leagueCfg.id, league);
       cache.rosters.set(leagueCfg.id, rosters);
       cache.users.set(leagueCfg.id, users);
+      cache.matchups.set(leagueCfg.id, matchups);
 
       const tabBtn = tabsEl.querySelector(
         `.tab-btn[data-index="${i}"]`
@@ -131,6 +133,7 @@ function columnHeader(title, season) {
 }
 
 function mountLeagueView(container, leagueId, league, rosters, users) {
+  const matchups = cache.matchups.get(leagueId) || [];
   container.replaceChildren(
     columnHeader(
       league.name || 'League',
@@ -139,16 +142,22 @@ function mountLeagueView(container, leagueId, league, rosters, users) {
     el(
       'div',
       { class: 'view' },
-      buildTeamList(container, leagueId, league, rosters, users)
+      buildTeamList(container, leagueId, league, rosters, users, matchups)
     )
   );
 }
 
-function buildTeamList(container, leagueId, league, rosters, users) {
+function buildTeamList(container, leagueId, league, rosters, users, matchups) {
   const waiverCap = Number(
     (league.settings && league.settings.waiver_budget) || 0
   );
   const usersById = mapUsersByOwnerId(users);
+  
+  // Create a map of roster_id to points
+  const pointsByRosterId = new Map();
+  (matchups || []).forEach(m => {
+    pointsByRosterId.set(m.roster_id, m.points || 0);
+  });
   const active = rosters.filter(
     r =>
       !(
@@ -188,6 +197,7 @@ function buildTeamList(container, leagueId, league, rosters, users) {
           (r.settings && r.settings.waiver_budget_used) || 0
         )
     );
+    const points = pointsByRosterId.get(r.roster_id) || 0;
     const initials = (teamName || 'T')
       .split(/\s+/)
       .slice(0, 2)
@@ -238,7 +248,7 @@ function buildTeamList(container, leagueId, league, rosters, users) {
         'div',
         {},
         el('div', { class: 'title' }, teamName),
-        el('div', { class: 'meta' }, username)
+        el('div', { class: 'meta' }, `${points.toFixed(2)} pts`)
       ),
       el(
         'div',
@@ -283,6 +293,11 @@ async function mountTeamView(
     league.name || 'League',
     `Season ${league.season}`
   );
+  
+  // Get matchups to show points
+  const matchups = cache.matchups.get(leagueId) || [];
+  const matchup = matchups.find(m => m.roster_id === roster.roster_id);
+  const totalPoints = matchup ? (matchup.points || 0) : 0;
 
   const view = el('div', { class: 'view' });
   const head = el(
@@ -304,6 +319,11 @@ async function mountTeamView(
       '← Back'
     ),
     el('div', { class: 'team-name' }, teamName),
+    el(
+      'div',
+      { class: 'team-points', style: 'margin-left: auto; font-size: 1.5rem; font-weight: bold;' },
+      `${totalPoints.toFixed(2)} pts`
+    ),
     el(
       'div',
       { class: 'muted' },
@@ -335,8 +355,8 @@ async function mountTeamView(
 
     const grid = el('div', { class: 'grid' });
     grid.append(
-      renderPlayerCard('Starters', starters),
-      renderPlayerCard('Bench', bench)
+      renderPlayerCard('Starters', starters, matchup),
+      renderPlayerCard('Bench', bench, matchup)
     );
 
     view.replaceChildren(head, grid);
@@ -352,7 +372,7 @@ async function mountTeamView(
   }
 }
 
-function renderPlayerCard(title, arr) {
+function renderPlayerCard(title, arr, matchup) {
   const card = el('div', { class: 'card' });
   card.append(el('h3', {}, title));
 
@@ -365,6 +385,14 @@ function renderPlayerCard(title, arr) {
       )
     );
     return card;
+  }
+  
+  // Create map of player points from matchup
+  const playerPoints = new Map();
+  if (matchup && matchup.players_points) {
+    Object.entries(matchup.players_points).forEach(([playerId, points]) => {
+      playerPoints.set(playerId, points || 0);
+    });
   }
 
   arr.forEach(p => {
@@ -382,7 +410,8 @@ function renderPlayerCard(title, arr) {
     const pos = (p && p.position) || '';
     const bye =
       p && p.bye_week ? `Bye ${p.bye_week}` : '';
-    const status = (p && p.status) || 'Active';
+    const playerId = p && p.player_id;
+    const points = playerId ? (playerPoints.get(playerId) || 0) : 0;
     const label = pos || '?';
     const color = POSITION_COLORS[pos] || '#9bb3c9';
 
@@ -412,8 +441,8 @@ function renderPlayerCard(title, arr) {
       ),
       el(
         'div',
-        {},
-        el('span', { class: 'badge' }, status)
+        { style: 'font-weight: bold; color: #333;' },
+        `${points.toFixed(2)}`
       )
     );
     card.append(row);

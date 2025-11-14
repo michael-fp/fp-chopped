@@ -99,6 +99,10 @@ export const api = {
   transactions: (leagueId, week) =>
     getJSON(
       `https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`
+    ),
+  matchups: (leagueId, week) =>
+    getJSON(
+      `https://api.sleeper.app/v1/league/${leagueId}/matchups/${week}`
     )
 };
 

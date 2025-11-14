@@ -9,6 +9,7 @@ export const PLAYERS_IDB_DB = 'chopped-idb';
 export const PLAYERS_IDB_STORE = 'kv';
 export const PLAYERS_IDB_KEY = 'players_nfl_v1';
 export const MAX_WEEKS = 18;
+export const CURRENT_WEEK = 11;
 
 export const POSITION_COLORS = {
   QB: '#ff2a6d',
