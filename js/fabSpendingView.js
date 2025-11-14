@@ -557,10 +557,35 @@ function renderChart(timelines, animationProgress = 1.0) {
       }
     }
     
-    // At full animation, extend timelines to their end point
+    // Temporary storage for first pass
+    lineEndpoints.set(index, { 
+      timeline, 
+      visiblePoints
+    });
+  });
+  
+  // Calculate the maximum position across all non-eliminated timelines
+  let maxPosition = maxWeek; // Default to current week
+  if (animationProgress === 1.0) {
+    lineEndpoints.forEach(({ visiblePoints, timeline }) => {
+      if (visiblePoints.length > 0 && !timeline.isEliminated) {
+        const lastPoint = visiblePoints[visiblePoints.length - 1];
+        const position = lastPoint.week + (lastPoint.weekProgress || 0);
+        if (position > maxPosition) {
+          maxPosition = position;
+        }
+      }
+    });
+  }
+  
+  // Second pass: extend all timelines to maxPosition and calculate final endpoints
+  const tempStorage = new Map(lineEndpoints); // Save first pass results
+  lineEndpoints.clear();
+  
+  tempStorage.forEach(({ timeline, visiblePoints }, index) => {
+    // Extend timelines at full animation
     if (animationProgress === 1.0 && visiblePoints.length > 0) {
       const lastVisible = visiblePoints[visiblePoints.length - 1];
-      const currentWeek = state.currentWeek || maxWeek;
       
       if (timeline.isEliminated && timeline.eliminatedWeek) {
         // For eliminated teams, extend to elimination week
@@ -568,25 +593,24 @@ function renderChart(timelines, animationProgress = 1.0) {
         if (visiblePoints.length > 0) {
           const lastFiltered = visiblePoints[visiblePoints.length - 1];
           if (lastFiltered.week < timeline.eliminatedWeek) {
-            visiblePoints.push({ 
+            visiblePoints = [...visiblePoints, { 
               week: timeline.eliminatedWeek, 
               weekProgress: 0,
               fab: lastFiltered.fab,
               timestamp: lastFiltered.timestamp
-            });
+            }];
           }
         }
       } else {
-        // For non-eliminated teams, ALWAYS extend to current week
-        // Even if they have no transactions in the current week
-        const lastWeek = lastVisible.week;
-        if (lastWeek < currentWeek) {
-          visiblePoints.push({ 
-            week: currentWeek, 
-            weekProgress: 0,
+        // For non-eliminated teams, extend to maxPosition (furthest point of any team)
+        const lastPosition = lastVisible.week + (lastVisible.weekProgress || 0);
+        if (lastPosition < maxPosition) {
+          visiblePoints = [...visiblePoints, {
+            week: Math.floor(maxPosition),
+            weekProgress: maxPosition - Math.floor(maxPosition),
             fab: lastVisible.fab,
             timestamp: lastVisible.timestamp
-          });
+          }];
         }
       }
     }
@@ -599,12 +623,11 @@ function renderChart(timelines, animationProgress = 1.0) {
     
     if (visiblePoints.length === 0) return;
     
-    // Store the calculated endpoint (before jitter) and the visible points
+    // Store the calculated endpoint (before jitter) using the EXTENDED visible points
     const lastPoint = visiblePoints[visiblePoints.length - 1];
     const currentWeekWithProgress = lastPoint.week + (lastPoint.weekProgress || 0);
     
     // For the avatar position, use the actual last point coordinates directly
-    // This ensures the avatar is at the end of the line, even for eliminated teams
     const baseEndpoint = {
       x: xScale(currentWeekWithProgress),
       y: yScale(lastPoint.fab)
